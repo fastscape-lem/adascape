@@ -1,6 +1,7 @@
-# Parapatric Speciation
+# paraspec: Parapatric Speciation Model
 
-A simple Parapatric Speciation Model written in Python.
+The "paraspec" package is a simple Parapatric Speciation Model written
+in Python.
 
 ## Install
 
@@ -11,7 +12,8 @@ $ git clone https://gitext.gfz-potsdam.de/sec55-public/parapatric-speciation
 $ cd parapatric-speciation
 ```
 
-To run the command below:
+Then run the command below (this will install numpy, scipy and pandas
+if those libraries are not yet installed in your environment):
 
 ``` shell
 $ pip install .
