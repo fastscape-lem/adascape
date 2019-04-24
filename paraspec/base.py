@@ -1,3 +1,5 @@
+import textwrap
+
 import numpy as np
 import pandas as pd
 
@@ -21,7 +23,7 @@ class ParapatricSpeciationModel(object):
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
-        """Setup a new parapatric specification model.
+        """Setup a new Parapatric Specification Model.
 
         Parameters
         ----------
@@ -35,17 +37,17 @@ class ParapatricSpeciationModel(object):
             Model parameters.
 
         TODO: document the list of model parameters
+
         """
-
-        self.grid_x = grid_x
-        self.grid_y = grid_y
-        self._grid_extent = {'x': np.array([grid_x.min(), grid_x.max()]),
+        self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
                              'y': np.array([grid_y.min(), grid_y.max()])}
+        self._grid_index = self._build_grid_index([grid_x, grid_y])
 
-        self.init_pop_size = init_pop_size
+        self._population = {}
+        self._init_pop_size = init_pop_size
 
         # default parameter values
-        self.params = {
+        self._params = {
             'nb_radius': 500,
             'lifespan': 1,
             'capacity': 1000,
@@ -55,79 +57,120 @@ class ParapatricSpeciationModel(object):
             'm_freq': 0.05
         }
 
-        self.params.update(kwargs)
-        self._grid_index = self._build_grid_index()
+        invalid_params = list(set(kwargs) - set(self._params))
+        if invalid_params:
+            raise KeyError("{} are not valid model parameters"
+                           .format(", ".join(invalid_params)))
 
-    def _build_grid_index(self):
-        grid_points = np.column_stack([self.grid_x.ravel(),
-                                       self.grid_y.ravel()])
+        self._params.update(kwargs)
+
+    def _build_grid_index(self, grid_coords):
+        grid_points = np.column_stack([c.ravel() for c in grid_coords])
+
         return spatial.cKDTree(grid_points)
+
+    @property
+    def params(self):
+        """Model parameters (dict)."""
+        return self._params
+
+    @property
+    def population(self):
+        """Population data (dict) at the current time step."""
+        return self._population
+
+    @property
+    def population_size(self):
+        """Number of individuals in the population at the current time
+        step (return None if the population is not yet initialized).
+
+        """
+        if not self._population:
+            return None
+        else:
+            return self._population['trait'].size
+
+    def to_dataframe(self):
+        """Return the population data at the current time step as a
+        :class:`pandas.Dataframe`.
+
+        """
+        return pd.DataFrame(self._population)
 
     def initialize_population(self, trait_range):
         """Initialize population data.
 
-        Inital trait value is generated randomly (uniform distribution
-        bounded by ``trait_range``).
+        The positions (x, y) of population individuals are generated
+        uniformly within the grid bounds.
+
+        Parameters
+        ----------
+        trait_range : tuple
+            Range (min, max) within which initial trait values
+            are uniformly sampled for the population individuals.
 
         """
         sample = lambda minmax: np.random.uniform(minmax[0], minmax[1],
-                                                  self.init_pop_size)
+                                                  self._init_pop_size)
 
         population = {}
         population['generation'] = 0
-        population['x'] = sample(self._grid_extent['x'])
-        population['y'] = sample(self._grid_extent['y'])
+        population['x'] = sample(self._grid_bounds['x'])
+        population['y'] = sample(self._grid_bounds['y'])
         population['trait'] = sample(trait_range)
 
-        self.population = population
+        self._population.update(population)
 
     def _get_scaled_params(self, dt):
-        """Scale sigma parameters according to the number of generations that
-        succeed to each other during a time step.
+        # Scale sigma parameters according to the number of generations that
+        # succeed to each other during a time step.
 
-        """
-        n_gen = dt / self.params['lifespan']
+        n_gen = dt / self._params['lifespan']
 
-        sigma_w = self.params['sigma_w'] * np.sqrt(n_gen)
-        sigma_d = self.params['sigma_d'] * np.sqrt(n_gen)
-        sigma_mut = (self.params['sigma_mut'] * np.sqrt(n_gen)
-                     * np.sqrt(self.params['m_freq']))
+        sigma_w = self._params['sigma_w'] * np.sqrt(n_gen)
+        sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
+        sigma_mut = (self._params['sigma_mut'] * np.sqrt(n_gen)
+                     * np.sqrt(self._params['m_freq']))
 
         return sigma_w, sigma_d, sigma_mut
 
     def _count_neighbors(self, pop_points):
         index = spatial.cKDTree(pop_points)
-        neighbors = index.query_ball_tree(index, self.params['nb_radius'])
+        neighbors = index.query_ball_tree(index, self._params['nb_radius'])
 
         return np.array([len(nb) for nb in neighbors])
 
     def _get_optimal_trait(self, env_field, pop_points):
-        """Get the optimal trait value, i.e., an environmental factor
-        given by a field defined on the static grid at the position
-        of each individual (the chosen value is the one at the nearest
-        grid node).
+        # the optimal trait value is given by the environmental field
+        # defined on the grid (nearest grid node).
 
-        """
         _, idx = self._grid_index.query(pop_points)
 
         return env_field.ravel()[idx]
 
     def update_population(self, env_field, dt):
-        """Update population data (offsprings) during a time step,
-        given environmental factors.
+        """Update population data (generate offspring) during a time step,
+        depending on the current population state and environmental factors.
+
+        Parameters
+        ----------
+        env_field : array-like
+            Environmental field defined on the grid.
+        dt : float
+            Time step duration.
 
         """
         sigma_w, sigma_d, sigma_mut = self._get_scaled_params(dt)
 
-        pop_points = np.column_stack([self.population['x'],
-                                      self.population['y']])
+        pop_points = np.column_stack([self._population['x'],
+                                      self._population['y']])
 
         # compute offspring sizes
-        r_d = self.params['capacity'] / self._count_neighbors(pop_points)
+        r_d = self._params['capacity'] / self._count_neighbors(pop_points)
 
         opt_trait = self._get_optimal_trait(env_field, pop_points)
 
-        fitness = np.exp(-(self.population['trait'] - opt_trait)**2 /
+        fitness = np.exp(-(self._population['trait'] - opt_trait)**2 /
                          (2 * sigma_w**2))
 
         n_offspring = np.round(r_d * fitness).astype('int')
@@ -137,7 +180,7 @@ class ParapatricSpeciationModel(object):
             return
 
         # generate offspring
-        new_population = {k : np.repeat(self.population[k], n_offspring)
+        new_population = {k : np.repeat(self._population[k], n_offspring)
                           for k in ('x', 'y', 'trait')}
 
         # mutate offspring
@@ -146,7 +189,7 @@ class ParapatricSpeciationModel(object):
 
         # disperse offspring within grid bounds
         for k in ('x', 'y'):
-            bounds = self._grid_extent[k][:, None] - new_population[k]
+            bounds = self._grid_bounds[k][:, None] - new_population[k]
 
             new_k = stats.truncnorm.rvs(*(bounds / sigma_d),
                                         loc=new_population[k],
@@ -154,12 +197,15 @@ class ParapatricSpeciationModel(object):
 
             new_population[k] = new_k
 
-        self.population['generation'] += 1
-        self.population.update(new_population)
+        self._population['generation'] += 1
+        self._population.update(new_population)
 
-    def to_dataframe(self):
-        """Return the population data at the current time step as a
-        pandas.Dataframe.
+    def __repr__(self):
+        class_str = type(self).__name__
+        population_str = "population: {}".format(
+            self.population_size or 'not initialized')
+        params_str = "\n".join(["{}: {}".format(k, v)
+                                for k, v in self._params.items()])
 
-        """
-        return pd.DataFrame(self.population)
+        return "<{} ({})>\nParameters:\n{}".format(
+            class_str, population_str, textwrap.indent(params_str, '    '))
