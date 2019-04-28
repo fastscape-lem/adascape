@@ -115,6 +115,8 @@ class ParapatricSpeciationModel(object):
 
         population = {}
         population['generation'] = 0
+        population['id'] = np.arange(0, self._init_pop_size)
+        population['parent'] = np.ones(self._init_pop_size) * -1
         population['x'] = sample(self._grid_bounds['x'])
         population['y'] = sample(self._grid_bounds['y'])
         population['trait'] = sample(trait_range)
@@ -182,6 +184,11 @@ class ParapatricSpeciationModel(object):
         # generate offspring
         new_population = {k : np.repeat(self._population[k], n_offspring)
                           for k in ('x', 'y', 'trait')}
+        
+        new_population['parent'] = np.repeat(self._population['id'], n_offspring)
+        
+        last_id = self._population['id'][-1] + 1
+        new_population['id'] = np.arange(last_id, last_id + n_offspring.sum())
 
         # mutate offspring
         new_population['trait'] = np.random.normal(new_population['trait'],
