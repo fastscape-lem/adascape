@@ -9,7 +9,7 @@ import scipy.spatial as spatial
 
 class ParapatricSpeciationModel(object):
     """
-    Model of ...
+    Model of speciation along an environmental gradient.
 
     This is adapted from Irwin (2012).
 
@@ -18,12 +18,10 @@ class ParapatricSpeciationModel(object):
     Population individuals are all generated within the bounds
     of this grid.
 
-    TODO: complete docstrings.
-
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
-        """Setup a new Parapatric Specification Model.
+        """Setup a new Parapatric Speciation Model.
 
         Parameters
         ----------
@@ -34,9 +32,20 @@ class ParapatricSpeciationModel(object):
         init_pop_size : int
             Total number of indiviuals generated as the initial population.
         **kwargs
-            Model parameters.
-
-        TODO: document the list of model parameters
+            nb_radius: float
+                radius of window to obtain population size around an individual
+            lifespan: int
+                reproductive lifespan of organism, to scale with dt
+            capacity: int
+                capacity of population in window with radius (nb_radius)
+            sigma_w: float
+                width of fitness curve
+            sigma_d: float
+                width of dispersal curve
+            sigma_mut: float
+                width of mutation curve
+            m_freq: float
+                probability of mutation occurrring in offspring
 
         """
         self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
