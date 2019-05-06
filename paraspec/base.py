@@ -39,6 +39,8 @@ class ParapatricSpeciationModel(object):
         TODO: document the list of model parameters
 
         """
+        grid_x = np.asarray(grid_x)
+        grid_y = np.asarray(grid_y)
         self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
                              'y': np.array([grid_y.min(), grid_y.max()])}
         self._grid_index = self._build_grid_index([grid_x, grid_y])
@@ -225,5 +227,5 @@ class ParapatricSpeciationModel(object):
         params_str = "\n".join(["{}: {}".format(k, v)
                                 for k, v in self._params.items()])
 
-        return "<{} ({})>\nParameters:\n{}".format(
+        return "<{} ({})>\nParameters:\n{}\n".format(
             class_str, population_str, textwrap.indent(params_str, '    '))
