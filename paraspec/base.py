@@ -47,6 +47,8 @@ class ParapatricSpeciationModel(object):
                 probability of mutation occurrring in offspring
 
         """
+        grid_x = np.asarray(grid_x)
+        grid_y = np.asarray(grid_y)
         self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
                              'y': np.array([grid_y.min(), grid_y.max()])}
         self._grid_index = self._build_grid_index([grid_x, grid_y])
@@ -62,7 +64,8 @@ class ParapatricSpeciationModel(object):
             'sigma_w': 500,
             'sigma_d': 5,
             'sigma_mut': 500,
-            'm_freq': 0.05
+            'm_freq': 0.05,
+            'random_seed': None
         }
 
         invalid_params = list(set(kwargs) - set(self._params))
@@ -71,6 +74,15 @@ class ParapatricSpeciationModel(object):
                            .format(", ".join(invalid_params)))
 
         self._params.update(kwargs)
+
+        if isinstance(self._params['random_seed'], np.random.RandomState):
+            self._random = self._params['random_seed']
+        else:
+            self._random = np.random.RandomState(self._params['random_seed'])
+
+        # https://stackoverflow.com/questions/16016959/scipy-stats-seed
+        self._truncnorm = stats.truncnorm
+        self._truncnorm.random_state = self._random
 
     def _build_grid_index(self, grid_coords):
         grid_points = np.column_stack([c.ravel() for c in grid_coords])
@@ -105,6 +117,9 @@ class ParapatricSpeciationModel(object):
         """
         return pd.DataFrame(self._population)
 
+    def _sample_in_range(self, range):
+        return self._random.uniform(range[0], range[1], self._init_pop_size)
+
     def initialize_population(self, trait_range):
         """Initialize population data.
 
@@ -118,16 +133,13 @@ class ParapatricSpeciationModel(object):
             are uniformly sampled for the population individuals.
 
         """
-        sample = lambda minmax: np.random.uniform(minmax[0], minmax[1],
-                                                  self._init_pop_size)
-
         population = {}
         population['generation'] = 0
         population['id'] = np.arange(0, self._init_pop_size)
         population['parent'] = np.ones(self._init_pop_size) * -1
-        population['x'] = sample(self._grid_bounds['x'])
-        population['y'] = sample(self._grid_bounds['y'])
-        population['trait'] = sample(trait_range)
+        population['x'] = self._sample_in_range(self._grid_bounds['x'])
+        population['y'] = self._sample_in_range(self._grid_bounds['y'])
+        population['trait'] = self._sample_in_range(trait_range)
 
         self._population.update(population)
 
@@ -190,23 +202,24 @@ class ParapatricSpeciationModel(object):
             return
 
         # generate offspring
-        new_population = {k : np.repeat(self._population[k], n_offspring)
+        new_population = {k: np.repeat(self._population[k], n_offspring)
                           for k in ('x', 'y', 'trait')}
-        
-        new_population['parent'] = np.repeat(self._population['id'], n_offspring)
-        
+
+        new_population['parent'] = np.repeat(self._population['id'],
+                                             n_offspring)
+
         last_id = self._population['id'][-1] + 1
         new_population['id'] = np.arange(last_id, last_id + n_offspring.sum())
 
         # mutate offspring
-        new_population['trait'] = np.random.normal(new_population['trait'],
-                                                   sigma_mut)
+        new_population['trait'] = self._random.normal(new_population['trait'],
+                                                      sigma_mut)
 
         # disperse offspring within grid bounds
         for k in ('x', 'y'):
             bounds = self._grid_bounds[k][:, None] - new_population[k]
 
-            new_k = stats.truncnorm.rvs(*(bounds / sigma_d),
+            new_k = self._truncnorm.rvs(*(bounds / sigma_d),
                                         loc=new_population[k],
                                         scale=sigma_d)
 
@@ -222,5 +235,5 @@ class ParapatricSpeciationModel(object):
         params_str = "\n".join(["{}: {}".format(k, v)
                                 for k, v in self._params.items()])
 
-        return "<{} ({})>\nParameters:\n{}".format(
+        return "<{} ({})>\nParameters:\n{}\n".format(
             class_str, population_str, textwrap.indent(params_str, '    '))
