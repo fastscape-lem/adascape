@@ -13,8 +13,7 @@ class ParapatricSpeciationModel(object):
 
     This is adapted from Irwin (2012).
 
-    Environmental factors are given on a grid, which is
-    assumed static and rectangular in this implementation.
+    Environmental factors are given on a grid.
     Population individuals are all generated within the bounds
     of this grid.
 
