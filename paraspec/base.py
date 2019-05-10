@@ -162,8 +162,7 @@ class ParapatricSpeciationModel(object):
 
         sigma_w = self._params['sigma_w'] * np.sqrt(n_gen)
         sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
-        sigma_mut = (self._params['sigma_mut'] * np.sqrt(n_gen)
-                     * np.sqrt(self._params['m_freq']))
+        sigma_mut = (self._params['sigma_mut'] * np.sqrt(n_gen))
 
         return sigma_w, sigma_d, sigma_mut
 
