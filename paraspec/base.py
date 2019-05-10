@@ -56,6 +56,8 @@ class ParapatricSpeciationModel(object):
         self._population = {}
         self._init_pop_size = init_pop_size
 
+        self._fitness = {}
+
         # default parameter values
         self._params = {
             'nb_radius': 500,
@@ -100,6 +102,10 @@ class ParapatricSpeciationModel(object):
         return self._population
 
     @property
+    def fitness(self):
+        return self._fitness
+
+    @property
     def population_size(self):
         """Number of individuals in the population at the current time
         step (return None if the population is not yet initialized).
@@ -116,6 +122,11 @@ class ParapatricSpeciationModel(object):
 
         """
         return pd.DataFrame(self._population)
+
+    def to_dataframe_fitness(self):
+        """Return the fitness data at time step"""
+
+        return pd.DataFrame(self._fitness)
 
     def _sample_in_range(self, range):
         return self._random.uniform(range[0], range[1], self._init_pop_size)
@@ -196,6 +207,14 @@ class ParapatricSpeciationModel(object):
                          (2 * sigma_w**2))
 
         n_offspring = np.round(r_d * fitness).astype('int')
+
+        fitness_params = {}
+        fitness_params['step'] = self._population['generation']
+        fitness_params['r_d'] = r_d
+        fitness_params['w_i'] = fitness
+        fitness_params['n_offspring'] = n_offspring
+
+        self._fitness.update(fitness_params)
 
         # no offspring? keep population unchanged
         if n_offspring.sum() == 0:
