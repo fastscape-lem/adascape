@@ -108,7 +108,7 @@ class TestParapatricSpeciationModel(object):
         np.testing.assert_equal(initialized_model.population['id'],
                                 np.arange(0, 10))
         np.testing.assert_equal(initialized_model.population['parent'],
-                                np.ones(10) * -1)
+                                np.arange(0, 10))
 
         trait = initialized_model.population['trait']
         assert np.all((trait >= 0) & (trait <= 1))
