@@ -1,4 +1,5 @@
 import textwrap
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -72,6 +73,12 @@ class ParapatricSpeciationModel(object):
             Fixed random state for reproducible experiments.
             If None (default), results will differ from one run
             to another.
+        on_extinction : {'warn', 'raise', 'ignore'}
+            Behavior when no offspring is generated (total extinction of
+            population) during model runtime. 'warn' (default) displays
+            a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
+            stops) or 'ignore' silently continues the simulation
+            doing nothing (no population).
 
         """
         grid_x = np.asarray(grid_x)
@@ -92,10 +99,12 @@ class ParapatricSpeciationModel(object):
             'sigma_d': 5.,
             'sigma_mut': 500.,
             'm_freq': 0.05,
-            'random_seed': None
+            'random_seed': None,
+            'on_extinction': 'warn'
         }
 
         invalid_params = list(set(kwargs) - set(self._params))
+
         if invalid_params:
             raise KeyError("{} are not valid model parameters"
                            .format(", ".join(invalid_params)))
@@ -106,6 +115,15 @@ class ParapatricSpeciationModel(object):
             self._random = self._params['random_seed']
         else:
             self._random = np.random.RandomState(self._params['random_seed'])
+
+        valid_on_extinction = ('warn', 'raise', 'ignore')
+
+        if self._params['on_extinction'] not in valid_on_extinction:
+            raise ValueError(
+                "invalid value found for 'on_extinction' parameter. "
+                "Found {!r}, must be one of {!r}"
+                .format(self._params['on_extinction'], valid_on_extinction)
+            )
 
         # https://stackoverflow.com/questions/16016959/scipy-stats-seed
         self._truncnorm = stats.truncnorm
@@ -212,46 +230,62 @@ class ParapatricSpeciationModel(object):
         """
         sigma_w, sigma_d, sigma_mut = self._get_scaled_params(dt)
 
-        pop_points = np.column_stack([self._population['x'],
-                                      self._population['y']])
+        if self.population_size:
+            pop_points = np.column_stack([self._population['x'],
+                                          self._population['y']])
 
-        # compute offspring sizes
-        r_d = self._params['capacity'] / self._count_neighbors(pop_points)
+            # compute offspring sizes
+            r_d = self._params['capacity'] / self._count_neighbors(pop_points)
 
-        opt_trait = self._get_optimal_trait(env_field, pop_points)
+            opt_trait = self._get_optimal_trait(env_field, pop_points)
 
-        fitness = np.exp(-(self._population['trait'] - opt_trait)**2 /
-                         (2 * sigma_w**2))
+            fitness = np.exp(-(self._population['trait'] - opt_trait)**2 /
+                             (2 * sigma_w**2))
 
-        n_offspring = np.round(r_d * fitness).astype('int')
+            n_offspring = np.round(r_d * fitness).astype('int')
 
-        # no offspring? keep population unchanged
-        if n_offspring.sum() == 0:
-            return
+        else:
+            n_offspring = np.array([])
 
-        # generate offspring
-        new_population = {k: np.repeat(self._population[k], n_offspring)
-                          for k in ('x', 'y', 'trait')}
+        if not n_offspring.sum():
+            # population total extinction
+            if self._params['on_extinction'] == 'raise':
+                raise RuntimeError("no offspring generated. "
+                                   "Model execution has stopped.")
 
-        new_population['parent'] = np.repeat(self._population['id'],
-                                             n_offspring)
+            if self._params['on_extinction'] == 'warn':
+                warnings.warn("no offspring generated. "
+                              "Model execution continues with no population.",
+                              RuntimeWarning)
 
-        last_id = self._population['id'][-1] + 1
-        new_population['id'] = np.arange(last_id, last_id + n_offspring.sum())
+            new_population = {k: np.array([])
+                              for k in ('id', 'parent', 'x', 'y', 'trait')}
 
-        # mutate offspring
-        new_population['trait'] = self._random.normal(new_population['trait'],
-                                                      sigma_mut)
+        else:
+            # generate offspring
+            new_population = {k: np.repeat(self._population[k], n_offspring)
+                              for k in ('x', 'y', 'trait')}
 
-        # disperse offspring within grid bounds
-        for k in ('x', 'y'):
-            bounds = self._grid_bounds[k][:, None] - new_population[k]
+            new_population['parent'] = np.repeat(self._population['id'],
+                                                 n_offspring)
 
-            new_k = self._truncnorm.rvs(*(bounds / sigma_d),
-                                        loc=new_population[k],
-                                        scale=sigma_d)
+            last_id = self._population['id'][-1] + 1
+            new_population['id'] = np.arange(
+                last_id, last_id + n_offspring.sum())
 
-            new_population[k] = new_k
+            # mutate offspring
+            new_population['trait'] = self._random.normal(
+                new_population['trait'], sigma_mut)
+
+            # disperse offspring within grid bounds
+            for k in ('x', 'y'):
+                bounds = self._grid_bounds[k][:, None] - new_population[k]
+
+                new_k = self._truncnorm.rvs(*(bounds / sigma_d),
+                                            loc=new_population[k],
+                                            scale=sigma_d)
+
+                new_population[k] = new_k
 
         self._population['step'] += 1
         self._population['time'] += dt
