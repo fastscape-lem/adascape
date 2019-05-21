@@ -134,7 +134,7 @@ class ParapatricSpeciationModel(object):
 
         """
         population = {}
-        population['generation'] = 0
+        population['step'] = 0
         population['time'] = 0.
         population['id'] = np.arange(0, self._init_pop_size)
         population['parent'] = np.arange(0, self._init_pop_size)
@@ -226,7 +226,7 @@ class ParapatricSpeciationModel(object):
 
             new_population[k] = new_k
 
-        self._population['generation'] += 1
+        self._population['step'] += 1
         self._population['time'] += dt
         self._population.update(new_population)
 

@@ -104,7 +104,7 @@ class TestParapatricSpeciationModel(object):
     def test_initialize_population(self, grid, initialized_model):
         assert initialized_model.population_size == 10
 
-        assert initialized_model.population['generation'] == 0
+        assert initialized_model.population['step'] == 0
         np.testing.assert_equal(initialized_model.population['id'],
                                 np.arange(0, 10))
         np.testing.assert_equal(initialized_model.population['parent'],
@@ -155,8 +155,8 @@ class TestParapatricSpeciationModel(object):
             model.update_population(env_field, 1)
             current_pop = model.population.copy()
 
-            # test generation
-            assert current_pop['generation'] == 1
+            # test step
+            assert current_pop['step'] == 1
             assert current_pop['id'][0] == init_pop['id'].size
 
             # test dispersal (only check within domain)
