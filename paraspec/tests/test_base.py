@@ -18,7 +18,8 @@ def params():
         'sigma_d': 4,
         'sigma_mut': 0.5,
         'm_freq': 0.04,
-        'random_seed': 1234
+        'random_seed': 1234,
+        'on_extinction': 'ignore'
     }
 
 
@@ -59,6 +60,7 @@ def model_repr():
         sigma_mut: 0.5
         m_freq: 0.04
         random_seed: 1234
+        on_extinction: ignore
     """)
 
 
@@ -75,6 +77,7 @@ def initialized_model_repr():
         sigma_mut: 0.5
         m_freq: 0.04
         random_seed: 1234
+        on_extinction: ignore
     """)
 
 
@@ -89,6 +92,10 @@ class TestParapatricSpeciationModel(object):
         with pytest.raises(KeyError, match="not valid model parameters"):
             ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10,
                                       invalid_param=0, invlaid_param2='1')
+
+        with pytest.raises(ValueError, match="invalid value"):
+            ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10,
+                                      on_extinction='invalid')
 
         rs = np.random.RandomState(0)
 
@@ -174,19 +181,52 @@ class TestParapatricSpeciationModel(object):
         scaled_sigma_mut = 0.2   # sigma_mut * sqrt(m_freq) * 1
         assert pytest.approx(trait_rms, scaled_sigma_mut)
 
-    @pytest.mark.parametrize('capacity_factor,env_field_factor',
-                             [(0., 1), (1., 1e3)])
-    def test_update_population_no_offspring(self, initialized_model,
-                                            env_field, capacity_factor,
-                                            env_field_factor):
+    @pytest.mark.parametrize('capacity_mul,env_field_mul,on_extinction', [
+        (0., 1, 'raise'),
+        (0., 1, 'warn'),
+        (0., 1, 'ignore'),
+        (1., 1e3, 'ignore')
+    ])
+    def test_update_population_extinction(self,
+                                          initialized_model,
+                                          env_field,
+                                          capacity_mul,
+                                          env_field_mul,
+                                          on_extinction):
+
+        subset_keys = ('id', 'parent', 'x', 'y', 'trait')
+
+        def get_pop_subset():
+            pop = initialized_model.population.copy()
+            return {k: pop[k] for k in subset_keys}
+
+        initialized_model._params['on_extinction'] = on_extinction
+
         # no offspring via either r_d values = 0 or very low fitness values
-        initialized_model._params['capacity'] *= capacity_factor
+        initialized_model._params['capacity'] *= capacity_mul
+        field = env_field * env_field_mul
 
-        init_pop = initialized_model.population.copy()
-        initialized_model.update_population(env_field * env_field_factor, 1)
-        current_pop = initialized_model.population.copy()
+        if on_extinction == 'raise':
+            with pytest.raises(RuntimeError, match="no offspring"):
+                initialized_model.update_population(field, 1)
+            return
 
-        np.testing.assert_array_equal(init_pop['id'], current_pop['id'])
+        elif on_extinction == 'warn':
+            with pytest.warns(RuntimeWarning, match="no offspring"):
+                initialized_model.update_population(field, 1)
+                current = get_pop_subset()
+                initialized_model.update_population(field, 1)
+                next = get_pop_subset()
+
+        else:
+            initialized_model.update_population(field, 1)
+            current = get_pop_subset()
+            initialized_model.update_population(field, 1)
+            next = get_pop_subset()
+
+        for k in subset_keys:
+            assert current[k].size == 0
+            assert next[k].size == 0
 
     def test_repr(self, model, model_repr,
                   initialized_model, initialized_model_repr):
