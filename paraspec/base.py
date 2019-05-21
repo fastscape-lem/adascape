@@ -8,19 +8,36 @@ import scipy.spatial as spatial
 
 
 class ParapatricSpeciationModel(object):
+    """Model of speciation along an environmental gradient defined on a
+    2-d grid.
+
+    This model is adapted from:
+
+    Irwin D.E., 2012. Local Adaptation along Smooth Ecological
+    Gradients Causes Phylogeographic Breaks and Phenotypic Clustering.
+    The American Naturalist Vol. 180, No. 1, pp. 35-49.
+    DOI: 10.1086/666002
+
+    A model run starts with a given number of individuals with random
+    positions (x, y) generated uniformly within the grid bounds and
+    initial "trait" values generated uniformly within a given range.
+
+    Then, at each step, the number of offspring for each individual is
+    determined using a fitness value computed from the comparison of
+    environmental ("trait" vs. "optimal trait") and population density
+    ("number of individuals in the neighborhood" vs "capacity")
+    variables measured locally. Environmental variables are given on a
+    grid, while the neighborhood is defined by a circle of a given
+    radius centered on each individual.
+
+    New individuals are generated from the offspring, which undergo
+    some random dispersion (position) - and mutation (trait
+    value). Dispersion is constrained so that all individuals stay
+    within the domain delineated by the grid.
+
     """
-    Model of speciation along an environmental gradient.
-
-    This is adapted from Irwin (2012).
-
-    Environmental factors are given on a grid.
-    Population individuals are all generated within the bounds
-    of this grid.
-
-    """
-
     def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
-        """Setup a new Parapatric Speciation Model.
+        """Setup a new speciation model.
 
         Parameters
         ----------
@@ -31,20 +48,30 @@ class ParapatricSpeciationModel(object):
         init_pop_size : int
             Total number of indiviuals generated as the initial population.
         **kwargs
-            nb_radius: float
-                radius of window to obtain population size around an individual
-            lifespan: int
-                reproductive lifespan of organism, to scale with dt
-            capacity: int
-                capacity of population in window with radius (nb_radius)
-            sigma_w: float
-                width of fitness curve
-            sigma_d: float
-                width of dispersal curve
-            sigma_mut: float
-                width of mutation curve
-            m_freq: float
-                probability of mutation occurrring in offspring
+            See below.
+
+        Other Parameters
+        ----------------
+        nb_radius: float
+            Fixed radius of the circles that define the neighborhood
+            around each individual.
+        capacity: int
+            Capacity of population within the neighborhood area.
+        lifespan: float
+            Reproductive lifespan of organism. Used to scale the
+            parameters below with time step length.
+        sigma_w: float
+            Width of fitness curve.
+        sigma_d: float
+            Width of dispersal curve.
+        sigma_mut: float
+            Width of mutation curve.
+        m_freq: float
+            Probability of mutation occurrring in offspring.
+        random_seed : int or :class:`numpy.random.RandomState` object
+            Fixed random state for reproducible experiments.
+            If None (default), results will differ from one run
+            to another.
 
         """
         grid_x = np.asarray(grid_x)
@@ -58,12 +85,12 @@ class ParapatricSpeciationModel(object):
 
         # default parameter values
         self._params = {
-            'nb_radius': 500,
-            'lifespan': 1,
+            'nb_radius': 500.,
+            'lifespan': 1.,
             'capacity': 1000,
-            'sigma_w': 500,
-            'sigma_d': 5,
-            'sigma_mut': 500,
+            'sigma_w': 500.,
+            'sigma_d': 5.,
+            'sigma_mut': 500.,
             'm_freq': 0.05,
             'random_seed': None
         }
