@@ -35,8 +35,8 @@ class ParapatricSpeciationModel(object):
     some random dispersion (position) - and mutation (trait
     value). Dispersion is constrained so that all individuals stay
     within the domain delineated by the grid.
-
     """
+
     def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
         """Setup a new speciation model.
 
@@ -165,7 +165,7 @@ class ParapatricSpeciationModel(object):
     def _sample_in_range(self, range):
         return self._random.uniform(range[0], range[1], self._init_pop_size)
 
-    def initialize_population(self, trait_range):
+    def initialize_population(self, trait_range, x_range=None, y_range=None):
         """Initialize population data.
 
         The positions (x, y) of population individuals are generated
@@ -176,6 +176,16 @@ class ParapatricSpeciationModel(object):
         trait_range : tuple
             Range (min, max) within which initial trait values
             are uniformly sampled for the population individuals.
+        x_range : tuple, optional
+            Range (min, max) to define initial spatial bounds
+            of population in the x direction. Values must be contained
+            within grid bounds. Default ('None') will initialize population
+            within grid bounds in the x direction.
+        y_range : tuples, optional
+            Range (min, max) to define initial spatial bounds
+            of population in the y direction. Values must be contained
+            within grid bounds. Default ('None') will initialize population
+            within grid bounds in the y direction.
 
         """
         population = {}
@@ -183,8 +193,18 @@ class ParapatricSpeciationModel(object):
         population['time'] = 0.
         population['id'] = np.arange(0, self._init_pop_size)
         population['parent'] = np.arange(0, self._init_pop_size)
-        population['x'] = self._sample_in_range(self._grid_bounds['x'])
-        population['y'] = self._sample_in_range(self._grid_bounds['y'])
+
+        x_bounds = self._grid_bounds['x']
+        y_bounds = self._grid_bounds['y']
+        x_range = x_range or x_bounds
+        y_range = y_range or y_bounds
+
+        if ((x_range[0] < x_bounds[0]) or (x_range[1] > x_bounds[1]) or
+            (y_range[0] < y_bounds[0]) or (y_range[1] > y_bounds[1])):
+            raise ValueError("x_range and y_range must be within model bounds")
+
+        population['x'] = self._sample_in_range(x_range)
+        population['y'] = self._sample_in_range(y_range)
         population['trait'] = self._sample_in_range(trait_range)
 
         self._population.update(population)
@@ -195,10 +215,9 @@ class ParapatricSpeciationModel(object):
 
         n_gen = dt / self._params['lifespan']
 
-        sigma_w = self._params['sigma_w'] * np.sqrt(n_gen)
+        sigma_w = self._params['sigma_w']
         sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
-        sigma_mut = (self._params['sigma_mut'] * np.sqrt(n_gen)
-                     * np.sqrt(self._params['m_freq']))
+        sigma_mut = self._params['sigma_mut'] * np.sqrt(n_gen)
 
         return sigma_w, sigma_d, sigma_mut
 
@@ -216,7 +235,7 @@ class ParapatricSpeciationModel(object):
 
         return env_field.ravel()[idx]
 
-    def update_population(self, env_field, dt):
+    def update_population(self, env_field, dt, nfreq=None):
         """Update population data (generate offspring) during a time step,
         depending on the current population state and environmental factors.
 
@@ -226,6 +245,16 @@ class ParapatricSpeciationModel(object):
             Environmental field defined on the grid.
         dt : float
             Time step duration.
+        nfreq : int (optional)
+            Provides ability to store parent history at intervals
+            greater than dt for purposed of  exporting dataframe and
+            constructing trees. During steps between nfreq intervals,
+            'parent' will be populated with parental history of previous
+            generation. At nfreq interval population 'parent' will be updated
+            with id of previous generation and dataframe should be saved.
+            If None (defalut), 'parent' will be updated with id of
+            previous generation.
+
 
         """
         sigma_w, sigma_d, sigma_mut = self._get_scaled_params(dt)
@@ -239,13 +268,16 @@ class ParapatricSpeciationModel(object):
 
             opt_trait = self._get_optimal_trait(env_field, pop_points)
 
-            fitness = np.exp(-(self._population['trait'] - opt_trait)**2 /
-                             (2 * sigma_w**2))
+            fitness = np.exp(-(self._population['trait'] - opt_trait)**2
+                             / (2 * sigma_w**2))
 
-            n_offspring = np.round(r_d * fitness).astype('int')
+            n_gen = dt / self._params['lifespan']
+            n_offspring = np.round(
+                r_d * fitness * np.sqrt(n_gen)
+            ).astype('int')
 
         else:
-            n_offspring = np.array([])
+            n_offspring = np.array([], dtype='int')
 
         if not n_offspring.sum():
             # population total extinction
@@ -266,8 +298,16 @@ class ParapatricSpeciationModel(object):
             new_population = {k: np.repeat(self._population[k], n_offspring)
                               for k in ('x', 'y', 'trait')}
 
-            new_population['parent'] = np.repeat(self._population['id'],
-                                                 n_offspring)
+            # record ancestry at interval (nfreq) or all steps if nfreq='None'
+            step = self._population['step']
+
+            if nfreq is None or not step % nfreq:
+                new_population['parent'] = np.repeat(self._population['id'],
+                                                     n_offspring)
+            else:
+                new_population['parent'] = np.repeat(
+                    self._population['parent'], n_offspring
+                )
 
             last_id = self._population['id'][-1] + 1
             new_population['id'] = np.arange(

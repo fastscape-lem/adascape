@@ -123,6 +123,32 @@ class TestParapatricSpeciationModel(object):
         assert _in_bounds(grid[0], initialized_model.population['x'])
         assert _in_bounds(grid[1], initialized_model.population['y'])
 
+    @pytest.mark.parametrize("x_range,y_range,error", [
+        (None, None, False),
+        ([0, 15], None, False),
+        (None, [2, 7], False),
+        ([0, 15], [2, 7], False),
+        ([-1, 100], None, True),
+        (None, [-1, 100], True),
+        ([-1, 100], [-1, 100], True)
+    ])
+    def test_xy_range(self, model, grid, x_range, y_range, error):
+        if error:
+            expected = "x_range and y_range must be within model bounds"
+            with pytest.raises(ValueError, match=expected):
+                model.initialize_population(
+                    [0, 1], x_range=x_range, y_range=y_range
+                )
+
+        else:
+            model.initialize_population(
+                [0, 1], x_range=x_range, y_range=y_range
+            )
+            x_r = x_range or grid[0]
+            y_r = y_range or grid[1]
+            assert _in_bounds(np.array(x_r), model.population['x'])
+            assert _in_bounds(np.array(y_r), model.population['y'])
+
     def test_to_dataframe(self, initialized_model):
         expected = pd.DataFrame(initialized_model.population)
         actual = initialized_model.to_dataframe()
@@ -130,7 +156,7 @@ class TestParapatricSpeciationModel(object):
 
     def test_scaled_params(self, model):
         params = model._get_scaled_params(4)
-        expected = (1., 8., 0.2)
+        expected = (0.5, 8., 1)
 
         assert params == expected
 
@@ -178,8 +204,27 @@ class TestParapatricSpeciationModel(object):
 
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff**2))
-        scaled_sigma_mut = 0.2   # sigma_mut * sqrt(m_freq) * 1
+        scaled_sigma_mut = 1   # sigma_mut * sqrt(m_freq) * 1
         assert pytest.approx(trait_rms, scaled_sigma_mut)
+
+    @pytest.mark.parametrize("nfreq", [None, 1, 10])
+    def test_updade_population_nfreq(self, model, env_field, nfreq):
+        model.initialize_population([env_field.min(), env_field.max()])
+        model.update_population(env_field, 1, nfreq=nfreq)
+        pop1 = model.population.copy()
+
+        # test nfreq
+        model.update_population(env_field, 1, nfreq=nfreq)
+        pop2 = model.population.copy()
+        step = pop1['step']
+
+        old_parent = np.max(pop1['parent'])
+        new_parent = np.max(pop2['parent'])
+
+        if nfreq is None or not step % nfreq:
+            assert old_parent < new_parent
+        else:
+            assert old_parent >= new_parent
 
     @pytest.mark.parametrize('capacity_mul,env_field_mul,on_extinction', [
         (0., 1, 'raise'),

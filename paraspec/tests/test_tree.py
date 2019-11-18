@@ -168,7 +168,7 @@ class TestPTAccessor(object):
         nx.isomorphism.is_isomorphic(G_actual, G_expected)
 
         # node attributes
-        actual = dict(G_actual.node.data())
+        actual = dict(G_actual.nodes.data())
 
         if node_col is None:
             expected = {0: {}, 1: {}, 2: {}, 3: {}, 4: {}}
