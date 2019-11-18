@@ -1,4 +1,5 @@
 import textwrap
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -8,19 +9,36 @@ import scipy.spatial as spatial
 
 
 class ParapatricSpeciationModel(object):
-    """
-    Model of speciation along an environmental gradient.
+    """Model of speciation along an environmental gradient defined on a
+    2-d grid.
 
-    This is adapted from Irwin (2012).
+    This model is adapted from:
 
-    Environmental factors are given on a grid.
-    Population individuals are all generated within the bounds
-    of this grid.
+    Irwin D.E., 2012. Local Adaptation along Smooth Ecological
+    Gradients Causes Phylogeographic Breaks and Phenotypic Clustering.
+    The American Naturalist Vol. 180, No. 1, pp. 35-49.
+    DOI: 10.1086/666002
 
+    A model run starts with a given number of individuals with random
+    positions (x, y) generated uniformly within the grid bounds and
+    initial "trait" values generated uniformly within a given range.
+
+    Then, at each step, the number of offspring for each individual is
+    determined using a fitness value computed from the comparison of
+    environmental ("trait" vs. "optimal trait") and population density
+    ("number of individuals in the neighborhood" vs "capacity")
+    variables measured locally. Environmental variables are given on a
+    grid, while the neighborhood is defined by a circle of a given
+    radius centered on each individual.
+
+    New individuals are generated from the offspring, which undergo
+    some random dispersion (position) - and mutation (trait
+    value). Dispersion is constrained so that all individuals stay
+    within the domain delineated by the grid.
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
-        """Setup a new Parapatric Speciation Model.
+        """Setup a new speciation model.
 
         Parameters
         ----------
@@ -31,20 +49,36 @@ class ParapatricSpeciationModel(object):
         init_pop_size : int
             Total number of indiviuals generated as the initial population.
         **kwargs
-            nb_radius: float
-                radius of window to obtain population size around an individual
-            lifespan: int
-                reproductive lifespan of organism, to scale with dt
-            capacity: int
-                capacity of population in window with radius (nb_radius)
-            sigma_w: float
-                width of fitness curve
-            sigma_d: float
-                width of dispersal curve
-            sigma_mut: float
-                width of mutation curve
-            m_freq: float
-                probability of mutation occurrring in offspring
+            See below.
+
+        Other Parameters
+        ----------------
+        nb_radius: float
+            Fixed radius of the circles that define the neighborhood
+            around each individual.
+        capacity: int
+            Capacity of population within the neighborhood area.
+        lifespan: float
+            Reproductive lifespan of organism. Used to scale the
+            parameters below with time step length.
+        sigma_w: float
+            Width of fitness curve.
+        sigma_d: float
+            Width of dispersal curve.
+        sigma_mut: float
+            Width of mutation curve.
+        m_freq: float
+            Probability of mutation occurrring in offspring.
+        random_seed : int or :class:`numpy.random.RandomState` object
+            Fixed random state for reproducible experiments.
+            If None (default), results will differ from one run
+            to another.
+        on_extinction : {'warn', 'raise', 'ignore'}
+            Behavior when no offspring is generated (total extinction of
+            population) during model runtime. 'warn' (default) displays
+            a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
+            stops) or 'ignore' silently continues the simulation
+            doing nothing (no population).
 
         """
         grid_x = np.asarray(grid_x)
@@ -60,17 +94,19 @@ class ParapatricSpeciationModel(object):
 
         # default parameter values
         self._params = {
-            'nb_radius': 500,
-            'lifespan': 1,
+            'nb_radius': 500.,
+            'lifespan': 1.,
             'capacity': 1000,
-            'sigma_w': 500,
-            'sigma_d': 5,
-            'sigma_mut': 500,
+            'sigma_w': 500.,
+            'sigma_d': 5.,
+            'sigma_mut': 500.,
             'm_freq': 0.05,
-            'random_seed': None
+            'random_seed': None,
+            'on_extinction': 'warn'
         }
 
         invalid_params = list(set(kwargs) - set(self._params))
+
         if invalid_params:
             raise KeyError("{} are not valid model parameters"
                            .format(", ".join(invalid_params)))
@@ -81,6 +117,15 @@ class ParapatricSpeciationModel(object):
             self._random = self._params['random_seed']
         else:
             self._random = np.random.RandomState(self._params['random_seed'])
+
+        valid_on_extinction = ('warn', 'raise', 'ignore')
+
+        if self._params['on_extinction'] not in valid_on_extinction:
+            raise ValueError(
+                "invalid value found for 'on_extinction' parameter. "
+                "Found {!r}, must be one of {!r}"
+                .format(self._params['on_extinction'], valid_on_extinction)
+            )
 
         # https://stackoverflow.com/questions/16016959/scipy-stats-seed
         self._truncnorm = stats.truncnorm
@@ -131,7 +176,7 @@ class ParapatricSpeciationModel(object):
     def _sample_in_range(self, range):
         return self._random.uniform(range[0], range[1], self._init_pop_size)
 
-    def initialize_population(self, trait_range):
+    def initialize_population(self, trait_range, x_range=None, y_range=None):
         """Initialize population data.
 
         The positions (x, y) of population individuals are generated
@@ -142,14 +187,35 @@ class ParapatricSpeciationModel(object):
         trait_range : tuple
             Range (min, max) within which initial trait values
             are uniformly sampled for the population individuals.
+        x_range : tuple, optional
+            Range (min, max) to define initial spatial bounds
+            of population in the x direction. Values must be contained
+            within grid bounds. Default ('None') will initialize population
+            within grid bounds in the x direction.
+        y_range : tuples, optional
+            Range (min, max) to define initial spatial bounds
+            of population in the y direction. Values must be contained
+            within grid bounds. Default ('None') will initialize population
+            within grid bounds in the y direction.
 
         """
         population = {}
-        population['generation'] = 0
+        population['step'] = 0
+        population['time'] = 0.
         population['id'] = np.arange(0, self._init_pop_size)
-        population['parent'] = np.ones(self._init_pop_size) * -1
-        population['x'] = self._sample_in_range(self._grid_bounds['x'])
-        population['y'] = self._sample_in_range(self._grid_bounds['y'])
+        population['parent'] = np.arange(0, self._init_pop_size)
+
+        x_bounds = self._grid_bounds['x']
+        y_bounds = self._grid_bounds['y']
+        x_range = x_range or x_bounds
+        y_range = y_range or y_bounds
+
+        if ((x_range[0] < x_bounds[0]) or (x_range[1] > x_bounds[1]) or
+            (y_range[0] < y_bounds[0]) or (y_range[1] > y_bounds[1])):
+            raise ValueError("x_range and y_range must be within model bounds")
+
+        population['x'] = self._sample_in_range(x_range)
+        population['y'] = self._sample_in_range(y_range)
         population['trait'] = self._sample_in_range(trait_range)
 
         self._population.update(population)
@@ -160,9 +226,9 @@ class ParapatricSpeciationModel(object):
 
         n_gen = dt / self._params['lifespan']
 
-        sigma_w = self._params['sigma_w'] * np.sqrt(n_gen)
+        sigma_w = self._params['sigma_w']
         sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
-        sigma_mut = (self._params['sigma_mut'] * np.sqrt(n_gen))
+        sigma_mut = self._params['sigma_mut'] * np.sqrt(n_gen)
 
         return sigma_w, sigma_d, sigma_mut
 
@@ -180,7 +246,7 @@ class ParapatricSpeciationModel(object):
 
         return env_field.ravel()[idx]
 
-    def update_population(self, env_field, dt):
+    def update_population(self, env_field, dt, nfreq=None):
         """Update population data (generate offspring) during a time step,
         depending on the current population state and environmental factors.
 
@@ -190,60 +256,90 @@ class ParapatricSpeciationModel(object):
             Environmental field defined on the grid.
         dt : float
             Time step duration.
+        nfreq : int (optional)
+            Provides ability to store parent history at intervals
+            greater than dt for purposed of  exporting dataframe and
+            constructing trees. During steps between nfreq intervals,
+            'parent' will be populated with parental history of previous
+            generation. At nfreq interval population 'parent' will be updated
+            with id of previous generation and dataframe should be saved.
+            If None (defalut), 'parent' will be updated with id of
+            previous generation.
+
 
         """
         sigma_w, sigma_d, sigma_mut = self._get_scaled_params(dt)
 
-        pop_points = np.column_stack([self._population['x'],
-                                      self._population['y']])
+        if self.population_size:
+            pop_points = np.column_stack([self._population['x'],
+                                          self._population['y']])
 
-        # compute offspring sizes
-        r_d = self._params['capacity'] / self._count_neighbors(pop_points)
+            # compute offspring sizes
+            r_d = self._params['capacity'] / self._count_neighbors(pop_points)
 
-        opt_trait = self._get_optimal_trait(env_field, pop_points)
+            opt_trait = self._get_optimal_trait(env_field, pop_points)
 
-        fitness = np.exp(-(self._population['trait'] - opt_trait)**2 /
-                         (2 * sigma_w**2))
+            fitness = np.exp(-(self._population['trait'] - opt_trait)**2
+                             / (2 * sigma_w**2))
 
-        n_offspring = np.round(r_d * fitness).astype('int')
+            n_gen = dt / self._params['lifespan']
+            n_offspring = np.round(
+                r_d * fitness * np.sqrt(n_gen)
+            ).astype('int')
 
-        fitness_params = {}
-        fitness_params['step'] = self._population['generation']
-        fitness_params['r_d'] = r_d
-        fitness_params['w_i'] = fitness
-        fitness_params['n_offspring'] = n_offspring
+        else:
+            n_offspring = np.array([], dtype='int')
 
-        self._fitness.update(fitness_params)
+        if not n_offspring.sum():
+            # population total extinction
+            if self._params['on_extinction'] == 'raise':
+                raise RuntimeError("no offspring generated. "
+                                   "Model execution has stopped.")
 
-        # no offspring? keep population unchanged
-        if n_offspring.sum() == 0:
-            return
+            if self._params['on_extinction'] == 'warn':
+                warnings.warn("no offspring generated. "
+                              "Model execution continues with no population.",
+                              RuntimeWarning)
 
-        # generate offspring
-        new_population = {k: np.repeat(self._population[k], n_offspring)
-                          for k in ('x', 'y', 'trait')}
+            new_population = {k: np.array([])
+                              for k in ('id', 'parent', 'x', 'y', 'trait')}
 
-        new_population['parent'] = np.repeat(self._population['id'],
-                                             n_offspring)
+        else:
+            # generate offspring
+            new_population = {k: np.repeat(self._population[k], n_offspring)
+                              for k in ('x', 'y', 'trait')}
 
-        last_id = self._population['id'][-1] + 1
-        new_population['id'] = np.arange(last_id, last_id + n_offspring.sum())
+            # record ancestry at interval (nfreq) or all steps if nfreq='None'
+            step = self._population['step']
 
-        # mutate offspring
-        new_population['trait'] = self._random.normal(new_population['trait'],
-                                                      sigma_mut)
+            if nfreq is None or not step % nfreq:
+                new_population['parent'] = np.repeat(self._population['id'],
+                                                     n_offspring)
+            else:
+                new_population['parent'] = np.repeat(
+                    self._population['parent'], n_offspring
+                )
 
-        # disperse offspring within grid bounds
-        for k in ('x', 'y'):
-            bounds = self._grid_bounds[k][:, None] - new_population[k]
+            last_id = self._population['id'][-1] + 1
+            new_population['id'] = np.arange(
+                last_id, last_id + n_offspring.sum())
 
-            new_k = self._truncnorm.rvs(*(bounds / sigma_d),
-                                        loc=new_population[k],
-                                        scale=sigma_d)
+            # mutate offspring
+            new_population['trait'] = self._random.normal(
+                new_population['trait'], sigma_mut)
 
-            new_population[k] = new_k
+            # disperse offspring within grid bounds
+            for k in ('x', 'y'):
+                bounds = self._grid_bounds[k][:, None] - new_population[k]
 
-        self._population['generation'] += 1
+                new_k = self._truncnorm.rvs(*(bounds / sigma_d),
+                                            loc=new_population[k],
+                                            scale=sigma_d)
+
+                new_population[k] = new_k
+
+        self._population['step'] += 1
+        self._population['time'] += dt
         self._population.update(new_population)
 
     def __repr__(self):
