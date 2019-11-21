@@ -176,6 +176,16 @@ class TestParapatricSpeciationModel(object):
 
         np.testing.assert_array_equal(opt_trait, env_field.ravel())
 
+    def test_evaluate_fitness(self, model, env_field):
+        # TODO: more comprehensive testing
+
+        model.initialize_population([env_field.min(), env_field.max()])
+        model.evaluate_fitness(env_field, 1)
+        pop = model.population.copy()
+
+        for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
+            assert k in pop
+
     def test_update_population(self, model, grid, env_field):
         # do many runs to avoid favorable random conditions
         trait_diff = []
@@ -185,7 +195,8 @@ class TestParapatricSpeciationModel(object):
 
             model.initialize_population([env_field.min(), env_field.max()])
             init_pop = model.population.copy()
-            model.update_population(env_field, 1)
+            model.evaluate_fitness(env_field, 1)
+            model.update_population(1)
             current_pop = model.population.copy()
 
             # test step
@@ -197,7 +208,8 @@ class TestParapatricSpeciationModel(object):
             assert _in_bounds(grid[1], current_pop['y'])
 
             # test mutation
-            model.update_population(env_field, 1)
+            model.evaluate_fitness(env_field, 1)
+            model.update_population(1)
             last_pop = model.population.copy()
             idx = np.searchsorted(current_pop['id'], last_pop['parent'])
             trait_diff.append(current_pop['trait'][idx] - last_pop['trait'])
@@ -207,14 +219,20 @@ class TestParapatricSpeciationModel(object):
         scaled_sigma_mut = 1   # sigma_mut * sqrt(m_freq) * 1
         assert pytest.approx(trait_rms, scaled_sigma_mut)
 
+        # test reset fitness data
+        for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
+            np.testing.assert_array_equal(last_pop[k], np.array([]))
+
     @pytest.mark.parametrize("nfreq", [None, 1, 10])
     def test_updade_population_nfreq(self, model, env_field, nfreq):
         model.initialize_population([env_field.min(), env_field.max()])
-        model.update_population(env_field, 1, nfreq=nfreq)
+        model.evaluate_fitness(env_field, 1)
+        model.update_population(1, nfreq=nfreq)
         pop1 = model.population.copy()
 
         # test nfreq
-        model.update_population(env_field, 1, nfreq=nfreq)
+        model.evaluate_fitness(env_field, 1)
+        model.update_population(1, nfreq=nfreq)
         pop2 = model.population.copy()
         step = pop1['step']
 
@@ -253,20 +271,25 @@ class TestParapatricSpeciationModel(object):
 
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):
-                initialized_model.update_population(field, 1)
+                initialized_model.evaluate_fitness(field, 1)
+                initialized_model.update_population(1)
             return
 
         elif on_extinction == 'warn':
             with pytest.warns(RuntimeWarning, match="no offspring"):
-                initialized_model.update_population(field, 1)
+                initialized_model.evaluate_fitness(field, 1)
+                initialized_model.update_population(1)
                 current = get_pop_subset()
-                initialized_model.update_population(field, 1)
+                initialized_model.evaluate_fitness(field, 1)
+                initialized_model.update_population(1)
                 next = get_pop_subset()
 
         else:
-            initialized_model.update_population(field, 1)
+            initialized_model.evaluate_fitness(field, 1)
+            initialized_model.update_population(1)
             current = get_pop_subset()
-            initialized_model.update_population(field, 1)
+            initialized_model.evaluate_fitness(field, 1)
+            initialized_model.update_population(1)
             next = get_pop_subset()
 
         for k in subset_keys:

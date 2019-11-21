@@ -200,7 +200,7 @@ class ParapatricSpeciationModel(object):
         y_range = y_range or y_bounds
 
         if ((x_range[0] < x_bounds[0]) or (x_range[1] > x_bounds[1]) or
-            (y_range[0] < y_bounds[0]) or (y_range[1] > y_bounds[1])):
+                (y_range[0] < y_bounds[0]) or (y_range[1] > y_bounds[1])):
             raise ValueError("x_range and y_range must be within model bounds")
 
         population['x'] = self._sample_in_range(x_range)
@@ -235,9 +235,9 @@ class ParapatricSpeciationModel(object):
 
         return env_field.ravel()[idx]
 
-    def update_population(self, env_field, dt, nfreq=None):
-        """Update population data (generate offspring) during a time step,
-        depending on the current population state and environmental factors.
+    def evaluate_fitness(self, env_field, dt):
+        """Evaluate fitness and generate offspring number for population and
+        with environmental conditions both taken at the current time step.
 
         Parameters
         ----------
@@ -245,19 +245,9 @@ class ParapatricSpeciationModel(object):
             Environmental field defined on the grid.
         dt : float
             Time step duration.
-        nfreq : int (optional)
-            Provides ability to store parent history at intervals
-            greater than dt for purposed of  exporting dataframe and
-            constructing trees. During steps between nfreq intervals,
-            'parent' will be populated with parental history of previous
-            generation. At nfreq interval population 'parent' will be updated
-            with id of previous generation and dataframe should be saved.
-            If None (defalut), 'parent' will be updated with id of
-            previous generation.
-
 
         """
-        sigma_w, sigma_d, sigma_mut = self._get_scaled_params(dt)
+        sigma_w, _, _ = self._get_scaled_params(dt)
 
         if self.population_size:
             pop_points = np.column_stack([self._population['x'],
@@ -277,7 +267,37 @@ class ParapatricSpeciationModel(object):
             ).astype('int')
 
         else:
+            r_d = np.array([])
+            opt_trait = np.array([])
+            fitness = np.array([])
             n_offspring = np.array([], dtype='int')
+
+        self._population.update({
+            'r_d': r_d,
+            'opt_trait': opt_trait,
+            'fitness': fitness,
+            'n_offspring': n_offspring
+        })
+
+    def update_population(self, dt, nfreq=None):
+        """Update population data (generate, mutate and disperse offspring).
+
+        Parameters
+        ----------
+        nfreq : int (optional)
+            Provides ability to store parent history at intervals
+            greater than dt for purposed of  exporting dataframe and
+            constructing trees. During steps between ``nfreq`` intervals,
+            'parent' will be populated with parental history of previous
+            generation. At ``nfreq`` interval population 'parent' will be
+            updated with id of previous generation and dataframe should be
+            saved. If None (default), 'parent' will be updated with id of
+            previous generation.
+
+        """
+        _, sigma_d, sigma_mut = self._get_scaled_params(dt)
+
+        n_offspring = self._population['n_offspring']
 
         if not n_offspring.sum():
             # population total extinction
@@ -299,15 +319,12 @@ class ParapatricSpeciationModel(object):
                               for k in ('x', 'y', 'trait')}
 
             # record ancestry at interval (nfreq) or all steps if nfreq='None'
-            step = self._population['step']
-
-            if nfreq is None or not step % nfreq:
-                new_population['parent'] = np.repeat(self._population['id'],
-                                                     n_offspring)
+            if nfreq is None or not self._population['step'] % nfreq:
+                parents = self._population['id']
             else:
-                new_population['parent'] = np.repeat(
-                    self._population['parent'], n_offspring
-                )
+                parents = self._population['parent']
+
+            new_population['parent'] = np.repeat(parents, n_offspring)
 
             last_id = self._population['id'][-1] + 1
             new_population['id'] = np.arange(
@@ -330,6 +347,14 @@ class ParapatricSpeciationModel(object):
         self._population['step'] += 1
         self._population['time'] += dt
         self._population.update(new_population)
+
+        # reset fitness / offspring data
+        self._population.update({
+            'r_d': np.array([]),
+            'opt_trait': np.array([]),
+            'fitness': np.array([]),
+            'n_offspring': np.array([])
+        })
 
     def __repr__(self):
         class_str = type(self).__name__
