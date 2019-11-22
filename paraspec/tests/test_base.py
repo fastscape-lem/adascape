@@ -8,7 +8,7 @@ import pytest
 from paraspec import ParapatricSpeciationModel
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture
 def params():
     return {
         'nb_radius': 5,
@@ -19,7 +19,8 @@ def params():
         'sigma_mut': 0.5,
         'm_freq': 0.04,
         'random_seed': 1234,
-        'on_extinction': 'ignore'
+        'on_extinction': 'ignore',
+        'always_direct_parent': True
     }
 
 
@@ -61,6 +62,7 @@ def model_repr():
         m_freq: 0.04
         random_seed: 1234
         on_extinction: ignore
+        always_direct_parent: True
     """)
 
 
@@ -78,6 +80,7 @@ def initialized_model_repr():
         m_freq: 0.04
         random_seed: 1234
         on_extinction: ignore
+        always_direct_parent: True
     """)
 
 
@@ -89,9 +92,6 @@ def _in_bounds(grid_coord, pop_coord):
 class TestParapatricSpeciationModel(object):
 
     def test_constructor(self):
-        with pytest.raises(KeyError, match="not valid model parameters"):
-            ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10,
-                                      invalid_param=0, invlaid_param2='1')
 
         with pytest.raises(ValueError, match="invalid value"):
             ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10,
@@ -232,26 +232,35 @@ class TestParapatricSpeciationModel(object):
         for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
             np.testing.assert_array_equal(last_pop[k], np.array([]))
 
-    @pytest.mark.parametrize("nfreq", [None, 1, 10])
-    def test_updade_population_nfreq(self, model, env_field, nfreq):
+    @pytest.mark.parametrize('direct_parent', [True, False])
+    def test_updade_population_parents(self, grid, params, env_field,
+                                       direct_parent):
+        X, Y = grid
+        params['always_direct_parent'] = direct_parent
+
+        model = ParapatricSpeciationModel(X, Y, 10, **params)
         model.initialize_population([env_field.min(), env_field.max()])
+
         model.evaluate_fitness(env_field, 1)
-        model.update_population(1, nfreq=nfreq)
-        pop1 = model.population.copy()
+        parents0 = model.to_dataframe(varnames='parent')
+        model.update_population(1)
 
-        # test nfreq
         model.evaluate_fitness(env_field, 1)
-        model.update_population(1, nfreq=nfreq)
-        pop2 = model.population.copy()
-        step = pop1['step']
+        model.update_population(1)
 
-        old_parent = np.max(pop1['parent'])
-        new_parent = np.max(pop2['parent'])
+        model.evaluate_fitness(env_field, 1)
+        parents2 = model.to_dataframe(varnames='parent')
+        model.update_population(1)
 
-        if nfreq is None or not step % nfreq:
-            assert old_parent < new_parent
+        model.evaluate_fitness(env_field, 1)
+        parents3 = model.to_dataframe(varnames='parent')
+        model.update_population(1)
+
+        if direct_parent:
+            assert parents2.values.max() > parents0.values.max()
         else:
-            assert old_parent >= new_parent
+            assert parents2.values.max() <= parents0.values.max()
+            assert parents3.values.max() > parents2.values.max()
 
     @pytest.mark.parametrize('capacity_mul,env_field_mul,on_extinction', [
         (0., 1, 'raise'),

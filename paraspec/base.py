@@ -37,7 +37,10 @@ class ParapatricSpeciationModel(object):
     within the domain delineated by the grid.
     """
 
-    def __init__(self, grid_x, grid_y, init_pop_size, **kwargs):
+    def __init__(self, grid_x, grid_y, init_pop_size, nb_radius=500.,
+                 lifespan=1., capacity=1000., sigma_w=500., sigma_d=5.,
+                 sigma_mut=500., m_freq=0.05, random_seed=None,
+                 on_extinction='warn', always_direct_parent=True):
         """Setup a new speciation model.
 
         Parameters
@@ -48,11 +51,6 @@ class ParapatricSpeciationModel(object):
             Grid y-coordinates.
         init_pop_size : int
             Total number of indiviuals generated as the initial population.
-        **kwargs
-            See below.
-
-        Other Parameters
-        ----------------
         nb_radius: float
             Fixed radius of the circles that define the neighborhood
             around each individual.
@@ -79,6 +77,14 @@ class ParapatricSpeciationModel(object):
             a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
             stops) or 'ignore' silently continues the simulation
             doing nothing (no population).
+        always_direct_parent : bool, optional
+            If True (default), the id of the parent set for each individual
+            of the current population will always correspond to its direct
+            parent. If False, those id values may correspond to older
+            ancestors. Set this parameter to False if you want to preserve the
+            connectivity of the generation tree built by calling
+            ``.population`` or ``.to_dataframe()`` at arbitrary steps of a
+            model run.
 
         """
         grid_x = np.asarray(grid_x)
@@ -90,40 +96,35 @@ class ParapatricSpeciationModel(object):
         self._population = {}
         self._init_pop_size = init_pop_size
 
-        # default parameter values
-        self._params = {
-            'nb_radius': 500.,
-            'lifespan': 1.,
-            'capacity': 1000,
-            'sigma_w': 500.,
-            'sigma_d': 5.,
-            'sigma_mut': 500.,
-            'm_freq': 0.05,
-            'random_seed': None,
-            'on_extinction': 'warn'
-        }
-
-        invalid_params = list(set(kwargs) - set(self._params))
-
-        if invalid_params:
-            raise KeyError("{} are not valid model parameters"
-                           .format(", ".join(invalid_params)))
-
-        self._params.update(kwargs)
-
-        if isinstance(self._params['random_seed'], np.random.RandomState):
-            self._random = self._params['random_seed']
-        else:
-            self._random = np.random.RandomState(self._params['random_seed'])
-
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
-        if self._params['on_extinction'] not in valid_on_extinction:
+        if on_extinction not in valid_on_extinction:
             raise ValueError(
                 "invalid value found for 'on_extinction' parameter. "
                 "Found {!r}, must be one of {!r}"
-                .format(self._params['on_extinction'], valid_on_extinction)
+                .format(on_extinction, valid_on_extinction)
             )
+
+        # default parameter values
+        self._params = {
+            'nb_radius': nb_radius,
+            'lifespan': lifespan,
+            'capacity': capacity,
+            'sigma_w': sigma_w,
+            'sigma_d': sigma_d,
+            'sigma_mut': sigma_mut,
+            'm_freq': m_freq,
+            'random_seed': random_seed,
+            'on_extinction': on_extinction,
+            'always_direct_parent': always_direct_parent
+        }
+
+        self._set_direct_parent = True
+
+        if isinstance(random_seed, np.random.RandomState):
+            self._random = random_seed
+        else:
+            self._random = np.random.RandomState(random_seed)
 
         # https://stackoverflow.com/questions/16016959/scipy-stats-seed
         self._truncnorm = stats.truncnorm
@@ -142,6 +143,8 @@ class ParapatricSpeciationModel(object):
     @property
     def population(self):
         """Population data (dict) at the current time step."""
+        self._set_direct_parent = True
+
         return self._population
 
     @property
@@ -167,11 +170,11 @@ class ParapatricSpeciationModel(object):
 
         """
         if varnames is None:
-            data = self._population
+            data = self.population
         elif isinstance(varnames, str):
-            data = {varnames: self._population[varnames]}
+            data = {varnames: self.population[varnames]}
         else:
-            data = {k: self._population[k] for k in varnames}
+            data = {k: self.population[k] for k in varnames}
 
         return pd.DataFrame(data)
 
@@ -292,20 +295,8 @@ class ParapatricSpeciationModel(object):
             'n_offspring': n_offspring
         })
 
-    def update_population(self, dt, nfreq=None):
+    def update_population(self, dt):
         """Update population data (generate, mutate and disperse offspring).
-
-        Parameters
-        ----------
-        nfreq : int (optional)
-            Provides ability to store parent history at intervals
-            greater than dt for purposed of  exporting dataframe and
-            constructing trees. During steps between ``nfreq`` intervals,
-            'parent' will be populated with parental history of previous
-            generation. At ``nfreq`` interval population 'parent' will be
-            updated with id of previous generation and dataframe should be
-            saved. If None (default), 'parent' will be updated with id of
-            previous generation.
 
         """
         _, sigma_d, sigma_mut = self._get_scaled_params(dt)
@@ -331,8 +322,8 @@ class ParapatricSpeciationModel(object):
             new_population = {k: np.repeat(self._population[k], n_offspring)
                               for k in ('x', 'y', 'trait')}
 
-            # record ancestry at interval (nfreq) or all steps if nfreq='None'
-            if nfreq is None or not self._population['step'] % nfreq:
+            # set parents either to direct parents or older ancestors
+            if self._set_direct_parent:
                 parents = self._population['id']
             else:
                 parents = self._population['parent']
@@ -368,6 +359,9 @@ class ParapatricSpeciationModel(object):
             'fitness': np.array([]),
             'n_offspring': np.array([])
         })
+
+        if not self._params['always_direct_parent']:
+            self._set_direct_parent = False
 
     def __repr__(self):
         class_str = type(self).__name__
