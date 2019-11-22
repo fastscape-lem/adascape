@@ -155,12 +155,25 @@ class ParapatricSpeciationModel(object):
         else:
             return self._population['trait'].size
 
-    def to_dataframe(self):
+    def to_dataframe(self, varnames=None):
         """Return the population data at the current time step as a
         :class:`pandas.Dataframe`.
 
+        Parameters
+        ----------
+        varnames : list or string, optional
+            Only export those variable name(s) as dataframe column(s).
+            Default: export all variables.
+
         """
-        return pd.DataFrame(self._population)
+        if varnames is None:
+            data = self._population
+        elif isinstance(varnames, str):
+            data = {varnames: self._population[varnames]}
+        else:
+            data = {k: self._population[k] for k in varnames}
+
+        return pd.DataFrame(data)
 
     def _sample_in_range(self, range):
         return self._random.uniform(range[0], range[1], self._init_pop_size)

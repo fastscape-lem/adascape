@@ -154,6 +154,15 @@ class TestParapatricSpeciationModel(object):
         actual = initialized_model.to_dataframe()
         pd.testing.assert_frame_equal(actual, expected)
 
+        expected = pd.DataFrame({'x': initialized_model.population['x']})
+        actual = initialized_model.to_dataframe(varnames='x')
+        pd.testing.assert_frame_equal(actual, expected)
+
+        data = {k: initialized_model.population[k] for k in ['x', 'y']}
+        expected = pd.DataFrame(data)
+        actual = initialized_model.to_dataframe(varnames=['x', 'y'])
+        pd.testing.assert_frame_equal(actual, expected)
+
     def test_scaled_params(self, model):
         params = model._get_scaled_params(4)
         expected = (0.5, 8., 1)
