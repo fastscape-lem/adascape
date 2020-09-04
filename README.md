@@ -3,12 +3,17 @@
 The "paraspec" package is a simple Parapatric Speciation Model written
 in Python.
 
+It may be easily coupled with a landscape evolution model (fastscape).
+
 ## Install
 
 This package depends on Python (3.5 or later is recommended),
 [numpy](http://www.numpy.org/),
 [scipy](https://docs.scipy.org/doc/scipy/reference/) and
 [pandas](https://pandas.pydata.org/).
+
+This package also provides a [fastscape](https://fastscape.readthedocs.io)
+extension (optional dependency).
 
 To install the package locally, first clone this repository:
 
