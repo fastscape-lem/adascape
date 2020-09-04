@@ -169,6 +169,15 @@ class TestParapatricSpeciationModel(object):
 
         assert params == expected
 
+    def test_scaled_params_not_effective(self, params, grid):
+        X, Y = grid
+        params.pop('lifespan')
+
+        model = ParapatricSpeciationModel(X, Y, 10, **params)
+
+        expected = (params['sigma_w'], params['sigma_d'], params['sigma_mut'])
+        assert model._get_scaled_params(4) == expected
+
     def test_count_neighbors(self, model, grid):
         points = np.column_stack([[0, 4, 8, 12], [0, 2, 4, 6]])
         expected = [2, 3, 3, 2]

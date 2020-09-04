@@ -38,7 +38,7 @@ class ParapatricSpeciationModel(object):
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, nb_radius=500.,
-                 lifespan=1., capacity=1000., sigma_w=500., sigma_d=5.,
+                 lifespan=None, capacity=1000., sigma_w=500., sigma_d=5.,
                  sigma_mut=500., m_freq=0.05, random_seed=None,
                  on_extinction='warn', always_direct_parent=True):
         """Setup a new speciation model.
@@ -56,9 +56,11 @@ class ParapatricSpeciationModel(object):
             around each individual.
         capacity: int
             Capacity of population within the neighborhood area.
-        lifespan: float
+        lifespan: float, optional
             Reproductive lifespan of organism. Used to scale the
-            parameters below with time step length.
+            parameters below with time step length. If None (default), the
+            lifespan will always match time step length so the parameters
+            won't be scaled.
         sigma_w: float
             Width of fitness curve.
         sigma_d: float
@@ -225,11 +227,19 @@ class ParapatricSpeciationModel(object):
 
         self._population.update(population)
 
+    def _get_n_gen(self, dt):
+        # number of generations during one time step.
+
+        if self._params['lifespan'] is None:
+            return 1.
+        else:
+            return dt / self._params['lifespan']
+
     def _get_scaled_params(self, dt):
         # Scale sigma parameters according to the number of generations that
         # succeed to each other during a time step.
 
-        n_gen = dt / self._params['lifespan']
+        n_gen = self._get_n_gen(dt)
 
         sigma_w = self._params['sigma_w']
         sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
@@ -277,7 +287,7 @@ class ParapatricSpeciationModel(object):
             fitness = np.exp(-(self._population['trait'] - opt_trait)**2
                              / (2 * sigma_w**2))
 
-            n_gen = dt / self._params['lifespan']
+            n_gen = self._get_n_gen(dt)
             n_offspring = np.round(
                 r_d * fitness * np.sqrt(n_gen)
             ).astype('int')
