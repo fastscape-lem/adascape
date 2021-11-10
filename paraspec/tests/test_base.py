@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from paraspec import ParapatricSpeciationModel
+from paraspec import IR12SpeciationModel
 
 
 @pytest.fixture
@@ -38,20 +38,20 @@ def env_field(grid):
 @pytest.fixture
 def model(params, grid):
     X, Y = grid
-    return ParapatricSpeciationModel(X, Y, 10, **params)
+    return IR12SpeciationModel(X, Y, 10, **params)
 
 
 @pytest.fixture
 def initialized_model(model, env_field):
     m = copy.deepcopy(model)
-    m.initialize_population([env_field.min(), env_field.max()])
+    m.initialize([env_field.min(), env_field.max()])
     return m
 
 
 @pytest.fixture(scope='session')
 def model_repr():
     return dedent("""\
-    <ParapatricSpeciationModel (population: not initialized)>
+    <IR12SpeciationModel (population: not initialized)>
     Parameters:
         nb_radius: 5
         lifespan: 1
@@ -69,7 +69,7 @@ def model_repr():
 @pytest.fixture(scope='session')
 def initialized_model_repr():
     return dedent("""\
-    <ParapatricSpeciationModel (population: 10)>
+    <IR12SpeciationModel (population: 10)>
     Parameters:
         nb_radius: 5
         lifespan: 1
@@ -94,16 +94,16 @@ class TestParapatricSpeciationModel(object):
     def test_constructor(self):
 
         with pytest.raises(ValueError, match="invalid value"):
-            ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10,
-                                      on_extinction='invalid')
+            IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10,
+                                on_extinction='invalid')
 
-        rs = np.random.RandomState(0)
+        rs = np.random.default_rng(0)
 
-        m = ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=rs)
-        assert m._random is rs
+        m = IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=rs)
+        assert m._rng is rs
 
-        m2 = ParapatricSpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=0)
-        np.testing.assert_equal(m2._random.get_state()[1], rs.get_state()[1])
+        m2 = IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=0)
+        np.testing.assert_equal(m2._rng.__getstate__()['state'], rs.__getstate__()['state'])
 
     def test_params(self, params, model):
         assert model.params == params
@@ -136,12 +136,12 @@ class TestParapatricSpeciationModel(object):
         if error:
             expected = "x_range and y_range must be within model bounds"
             with pytest.raises(ValueError, match=expected):
-                model.initialize_population(
+                model.initialize(
                     [0, 1], x_range=x_range, y_range=y_range
                 )
 
         else:
-            model.initialize_population(
+            model.initialize(
                 [0, 1], x_range=x_range, y_range=y_range
             )
             x_r = x_range or grid[0]
@@ -173,7 +173,7 @@ class TestParapatricSpeciationModel(object):
         X, Y = grid
         params.pop('lifespan')
 
-        model = ParapatricSpeciationModel(X, Y, 10, **params)
+        model = IR12SpeciationModel(X, Y, 10, **params)
 
         expected = (params['sigma_w'], params['sigma_d'], params['sigma_mut'])
         assert model._get_scaled_params(4) == expected
@@ -190,14 +190,14 @@ class TestParapatricSpeciationModel(object):
         X, Y = grid
         points = np.column_stack([X.ravel() + 0.1, Y.ravel() + 0.1])
 
-        opt_trait = model._get_optimal_trait(env_field, points)
+        opt_trait = model._get_optimal_env_value(env_field, points)
 
         np.testing.assert_array_equal(opt_trait, env_field.ravel())
 
     def test_evaluate_fitness(self, model, env_field):
         # TODO: more comprehensive testing
 
-        model.initialize_population([env_field.min(), env_field.max()])
+        model.initialize([env_field.min(), env_field.max()])
         model.evaluate_fitness(env_field, 1)
         pop = model.population.copy()
 
@@ -209,9 +209,9 @@ class TestParapatricSpeciationModel(object):
         trait_diff = []
 
         for i in range(1000):
-            model._random = np.random.RandomState(i)
+            model._rng = np.random.default_rng(i)
 
-            model.initialize_population([env_field.min(), env_field.max()])
+            model.initialize([env_field.min(), env_field.max()])
             init_pop = model.population.copy()
             model.evaluate_fitness(env_field, 1)
             model.update_population(1)
@@ -247,8 +247,8 @@ class TestParapatricSpeciationModel(object):
         X, Y = grid
         params['always_direct_parent'] = direct_parent
 
-        model = ParapatricSpeciationModel(X, Y, 10, **params)
-        model.initialize_population([env_field.min(), env_field.max()])
+        model = IR12SpeciationModel(X, Y, 10, **params)
+        model.initialize([env_field.min(), env_field.max()])
 
         model.evaluate_fitness(env_field, 1)
         parents0 = model.to_dataframe(varnames='parent')

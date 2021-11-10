@@ -3,7 +3,7 @@ from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
 
-from .base import ParapatricSpeciationModel
+from .base import IR12SpeciationModel
 
 
 @xs.process
@@ -83,7 +83,7 @@ class ParapatricSpeciation:
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
-        self._model = ParapatricSpeciationModel(
+        self._model = IR12SpeciationModel(
             X, Y,
             self.init_size,
             # TODO: maybe expose kwargs below as process inputs
@@ -93,7 +93,7 @@ class ParapatricSpeciation:
             **self._get_model_params()
         )
 
-        self._model.initialize_population([self.env_field.min(), self.env_field.max()])
+        self._model.initialize([self.env_field.min(), self.env_field.max()])
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
