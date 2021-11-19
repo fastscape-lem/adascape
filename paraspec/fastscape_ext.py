@@ -2,34 +2,38 @@ from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
-
 from .base import IR12SpeciationModel
+from .base import DD03SpeciationModel
 
 
 @xs.process
-class ParapatricSpeciation:
-    """Parapatric speciation model as a fastscape extension.
-
-    For more info, see :class:`paraspec.ParapatricSpeciationModel`.
-
+class Speciation(object):
+    """
+    Speciation model as a fastscape extension
     """
     init_size = xs.variable(description="initial population size", static=True)
+    init_trait_range = xs.variable(description="initial trait range", static=True)
     random_seed = xs.variable(
         default=None,
         description="random number generator seed",
         static=True
     )
-
-    nb_radius = xs.variable(description="fixed neighborhood radius")
-    capacity = xs.variable(description="population capacity within neighborhood")
-    sigma_d = xs.variable(description="controls dispersal magnitude")
-    sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_w = xs.variable(description="scales fitness")
-
     env_field = xs.variable(dims=("y", "x"))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
+
+
+@xs.process
+class IR12Speciation(Speciation):
+    """Irwin (2012) Speciation model as a fastscape extension.
+    For more info, see :class:`paraspec.base.IR12SpeciationModel`.
+    """
+    nb_radius = xs.variable(description="fixed neighborhood radius")
+    capacity = xs.variable(description="carrying capacity within a neighborhood")
+    sigma_d = xs.variable(description="controls dispersal magnitude")
+    sigma_mut = xs.variable(description="controls mutation magnitude")
+    sigma_w = xs.variable(description="scales fitness")
 
     size = xs.variable(intent="out", description="population size")
 
@@ -155,18 +159,120 @@ class ParapatricSpeciation:
 
 
 @xs.process
-class ParapatricEnvironmentElevation:
-    """Topographic elevation used as the environment field for the parapatric
+class DD03Speciation(Speciation):
+    """Doebeli & Dieckmann (2003) Speciation model as a fastscape extension.
+    For more info, see :class:`paraspec.base.DD03SpeciationModel`.
+    """
+    birth_rate = xs.variable(description="birth rate of individuals")
+    movement_rate = xs.variable(description="movement/dispersion rate of individuals")
+    slope_topt_env = xs.variable(description="slope of the relationship between optimum trait and environmental field")
+    car_cap_max = xs.variable(description="maximum carrying capacity")
+    sigma_opt_trait = xs.variable(description="controls strength abiotic filtering")
+    mut_prob = xs.variable(description="mutation probability")
+    sigma_mut = xs.variable(description="controls mutation magnitude")
+    sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
+    sigma_comp_trait = xs.variable(description="controls competition strength among individual based trait")
+    sigma_comp_dist = xs.variable(description="controls competition strength among individual based distance")
+    size = xs.variable(intent="out", description="abundance of individuals")
+
+    id = xs.on_demand(
+        dims='pop',
+        description="individual's id"
+    )
+    parent = xs.on_demand(
+        dims='pop',
+        description="individual's ancestor"
+    )
+    x = xs.on_demand(
+        dims='pop',
+        description="individual's x-position"
+    )
+    y = xs.on_demand(
+        dims='pop',
+        description="individual's y-position"
+    )
+    trait = xs.on_demand(
+        dims='pop',
+        description="individual's actual trait value"
+    )
+
+    def _get_model_params(self):
+        return {
+            'birth_rate': self.birth_rate,
+            'movement_rate': self.movement_rate,
+            'slope_topt_env': self.slope_topt_env,
+            'car_cap_max': self.car_cap_max,
+            'sigma_opt_trait': self.sigma_opt_trait,
+            'mut_prob': self.mut_prob,
+            'sigma_mut': self.sigma_mut,
+            'sigma_mov': self.sigma_mov,
+            'sigma_comp_trait': self.sigma_comp_trait,
+            'sigma_comp_dist': self.sigma_comp_dist,
+            "random_seed": self.random_seed
+        }
+
+    def initialize(self):
+        X, Y = np.meshgrid(self.grid_x, self.grid_y)
+
+        self._model = DD03SpeciationModel(
+            X, Y,
+            self.init_size,
+            **self._get_model_params()
+        )
+
+        self._model.initialize(self.init_trait_range)
+
+    @xs.runtime(args='step_delta')
+    def run_step(self, dt):
+        # reset population "cache"
+        self._population = None
+
+        # maybe update model parameters
+        self._model.params.update(self._get_model_params())
+
+        self.size = self._model.population_size
+        self._model.update(self.env_field)
+
+    @property
+    def population(self):
+        if self._population is None:
+            self._population = self._model.population
+        return self._population
+
+    @id.compute
+    def _get_id(self):
+        return self.population["id"]
+
+    @parent.compute
+    def _get_parent(self):
+        return self.population["parent"]
+
+    @x.compute
+    def _get_x(self):
+        return self.population["x"]
+
+    @y.compute
+    def _get_y(self):
+        return self.population["y"]
+
+    @trait.compute
+    def _get_trait(self):
+        return self.population["trait"]
+
+
+@xs.process
+class EnvironmentElevation:
+    """Topographic elevation used as the environment field for the
     speciation model.
 
     """
     elevation = xs.foreign(SurfaceTopography, "elevation")
-    env_field = xs.foreign(ParapatricSpeciation, "env_field", intent="out")
+    env_field = xs.foreign(IR12Speciation, "env_field", intent="out")
 
     def initialize(self):
         self.env_field = self.elevation
 
 
-paraspec_model = basic_model.update_processes(
-    {"life": ParapatricSpeciation, "life_env": ParapatricEnvironmentElevation}
+ir12spec_model = basic_model.update_processes(
+    {"life": IR12Speciation, "life_env": EnvironmentElevation}
 )

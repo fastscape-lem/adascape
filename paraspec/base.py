@@ -133,6 +133,8 @@ class SpeciationModelBase(object):
         return self._rng.uniform(values_range[0], values_range[1], self._init_pop_size)
 
     def _within_bounds(self, x, y, sigma):
+        # TODO: check effects of movement and boundary conditions
+        # TODO: Make boundary conditions of speciation model to match those of LEM
         delta_bounds_x = self._grid_bounds['x'][:, None] - x
         delta_bounds_y = self._grid_bounds['y'][:, None] - y
         new_x = self._truncnorm.rvs(*(delta_bounds_x/sigma), loc=x, scale=sigma)
@@ -403,8 +405,8 @@ class DD03SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, random_seed=None, lifespan=None, birth_rate=1, movement_rate=5,
-                 slope_topt_env=0.95, car_cap_max=500, car_cap_var=0.3, mut_prob=0.005, mut_var=0.05, mov_var=0.12,
-                 trait_comp_var=0.9, spat_comp_var=0.19):
+                 slope_topt_env=0.95, car_cap_max=500, sigma_opt_trait=0.3, mut_prob=0.005, sigma_mut=0.05,
+                 sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
         Initialization of
         :param grid_x: array-like
@@ -426,17 +428,17 @@ class DD03SpeciationModel(SpeciationModelBase):
             slope of the relationship between optimum trait and environmental field
         :param car_cap_max: integer
             maximum carrying capacity
-        :param car_cap_var: float
+        :param sigma_opt_trait: float
             variability of carrying capacity
         :param mut_prob: float
             mutation probability
-        :param mut_var: float
+        :param sigma_mut: float
             variability of mutated trait
-        :param mov_var: float
+        :param sigma_mov: float
             variability of movement distance
-        :param trait_comp_var: float
+        :param sigma_comp_trait: float
             variability of competition trait distance between individuals
-        :param spat_comp_var: float
+        :param sigma_comp_dist: float
             variability of competition spatial distance between individuals
         """
         super().__init__(grid_x, grid_y, init_pop_size, random_seed)
@@ -444,14 +446,14 @@ class DD03SpeciationModel(SpeciationModelBase):
                 'lifespan': lifespan,
                 'birth_rate': birth_rate,
                 'movement_rate': movement_rate,
-                'alpha': slope_topt_env,
-                'K_max': car_cap_max,
-                'sigma_K': car_cap_var,
+                'slope_topt_env': slope_topt_env,
+                'car_cap_max': car_cap_max,
+                'sigma_opt_trait': sigma_opt_trait,
                 'mut_prob': mut_prob,
-                'sigma_mut': mut_var,
-                'sigma_mov': mov_var,
-                'sigma_ax': trait_comp_var,
-                'sigma_az': spat_comp_var
+                'sigma_mut': sigma_mut,
+                'sigma_mov': sigma_mov,
+                'sigma_comp_trait': sigma_comp_trait,
+                'sigma_comp_dist': sigma_comp_dist
             }
 
         self.dtf = pd.DataFrame({
@@ -491,11 +493,11 @@ class DD03SpeciationModel(SpeciationModelBase):
                              xmin=self._grid_bounds['x'][0], xmax=self._grid_bounds['x'][1],
                              ymin=self._grid_bounds['y'][0], ymax=self._grid_bounds['y'][1],
                              zmin=np.min(Z), zmax=np.max(Z),
-                             alpha=self._params['alpha'],
-                             K0=self._params['K_max'],
-                             sigma_Kx=self._params['sigma_K'],
-                             sigma_ax=self._params['sigma_ax'],
-                             sigma_az=self._params['sigma_az'], )
+                             slope_topt_env=self._params['slope_topt_env'],
+                             K0=self._params['car_cap_max'],
+                             sigma_opt_trait=self._params['sigma_opt_trait'],
+                             sigma_comp_trait=self._params['sigma_comp_trait'],
+                             sigma_comp_dist=self._params['sigma_comp_dist'], )
         movement_i = self._population['trait'].size * [self._params['movement_rate']]
         events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
         events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._population['trait'].size,
@@ -553,8 +555,8 @@ class DD03SpeciationModel(SpeciationModelBase):
 
 
 @jit(nopython=True)
-def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0, zmax=1.0, alpha=0.95, k_max=500.,
-               sigma_k=0.3, sigma_trait=0.9,  sigma_xy=0.19):
+def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0, zmax=1.0, slope_topt_env=0.95,
+               car_cap_max=500., sigma_opt_trait=0.3, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
     """
     Logistic death rate for DD03 Speciation model
     implemented using numba
@@ -578,15 +580,15 @@ def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0,
         maximum value of y coordinate
     :param xmin: value, float
         minimum value of y coordinate
-    :param alpha: value, float
-        slope of the relationship between environmental field and optimal environmental value
-    :param k_max: value, float
+    :param slope_topt_env: value, float
+        slope of the relationship between environmental field and optimal trait value
+    :param car_cap_max: value, float
         maximum carrying capacity
-    :param sigma_k: value, float
-        variability carrying capacity
-    :param sigma_trait: value, float
+    :param sigma_opt_trait: value, float
+        variability of trait to abiotic condition
+    :param sigma_comp_trait: value, float
         competition variability as a measure of the trait difference between individuals
-    :param sigma_xy: value, float
+    :param sigma_comp_dist: value, float
         competition variability as a measure of the spatial distance between individuals
     :return: 1d array, floats
         death rate per individual
@@ -596,9 +598,9 @@ def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0,
     z = (z-zmin)/(zmax-zmin)
     delta_trait = np.expand_dims(trait, 1) - trait
     delta_xy = np.sqrt((np.expand_dims(x, 1) - x) ** 2 + (np.expand_dims(y, 1) - y) ** 2)
-    delta_trait_norm = np.exp(-0.5 * delta_trait ** 2 / sigma_trait ** 2)
-    delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_xy ** 2)
-    n_eff = 1 / (2 * np.pi * sigma_xy ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
-    topt = ((alpha * (z - 0.5)) + 0.5)
-    k = k_max * np.exp(-0.5 * (trait - topt) ** 2 / sigma_k ** 2)
+    delta_trait_norm = np.exp(-0.5 * delta_trait ** 2 / sigma_comp_trait ** 2)
+    delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
+    n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
+    topt = ((slope_topt_env * (z - 0.5)) + 0.5)
+    k = car_cap_max * np.exp(-0.5 * (trait - topt) ** 2 / sigma_opt_trait ** 2)
     return n_eff / k
