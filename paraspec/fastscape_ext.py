@@ -261,7 +261,7 @@ class DD03Speciation(Speciation):
 
 
 @xs.process
-class EnvironmentElevation:
+class IR12EnvironmentElevation:
     """Topographic elevation used as the environment field for the
     speciation model.
 
@@ -274,5 +274,23 @@ class EnvironmentElevation:
 
 
 ir12spec_model = basic_model.update_processes(
-    {"life": IR12Speciation, "life_env": EnvironmentElevation}
+    {"life": IR12Speciation, "life_env": IR12EnvironmentElevation}
+)
+
+
+@xs.process
+class DD03EnvironmentElevation:
+    """Topographic elevation used as the environment field for the
+    speciation model.
+
+    """
+    elevation = xs.foreign(SurfaceTopography, "elevation")
+    env_field = xs.foreign(DD03Speciation, "env_field", intent="out")
+
+    def initialize(self):
+        self.env_field = self.elevation
+
+
+dd03spec_model = basic_model.update_processes(
+    {"life": DD03Speciation, "life_env": DD03EnvironmentElevation}
 )
