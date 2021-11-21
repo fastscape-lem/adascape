@@ -488,13 +488,12 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # Compute event probabilities
         birth_i = self._population['trait'].size * [self._params['birth_rate']]
-        death_i = death_rate(trait=self._population['trait'],
-                             x=self._population['x'], y=self._population['y'], z=z_i,
+        death_i = death_rate(trait=self._population['trait'], x=self._population['x'], y=self._population['y'], z=z_i,
                              xmin=self._grid_bounds['x'][0], xmax=self._grid_bounds['x'][1],
                              ymin=self._grid_bounds['y'][0], ymax=self._grid_bounds['y'][1],
                              zmin=np.min(Z), zmax=np.max(Z),
                              slope_topt_env=self._params['slope_topt_env'],
-                             K0=self._params['car_cap_max'],
+                             car_cap_max=self._params['car_cap_max'],
                              sigma_opt_trait=self._params['sigma_opt_trait'],
                              sigma_comp_trait=self._params['sigma_comp_trait'],
                              sigma_comp_dist=self._params['sigma_comp_dist'], )
