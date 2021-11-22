@@ -12,7 +12,8 @@ class Speciation(object):
     Speciation model as a fastscape extension
     """
     init_size = xs.variable(description="initial population size", static=True)
-    init_trait_range = xs.variable(description="initial trait range", static=True)
+    init_min_trait = xs.variable(description="initial min trait value", static=True)
+    init_max_trait = xs.variable(description="initial max trait value", static=True)
     random_seed = xs.variable(
         default=None,
         description="random number generator seed",
@@ -97,7 +98,7 @@ class IR12Speciation(Speciation):
             **self._get_model_params()
         )
 
-        self._model.initialize([self.env_field.min(), self.env_field.max()])
+        self._model.initialize([self.init_min_trait, self.init_max_trait])
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -220,7 +221,7 @@ class DD03Speciation(Speciation):
             **self._get_model_params()
         )
 
-        self._model.initialize(self.init_trait_range)
+        self._model.initialize([self.init_min_trait, self.init_max_trait])
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):

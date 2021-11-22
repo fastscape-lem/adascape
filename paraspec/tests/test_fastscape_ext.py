@@ -22,8 +22,8 @@ def ps_process():
     x = np.linspace(0, 20, 10)
     y = np.linspace(0, 10, 20)
     elev = np.random.uniform(0, 1, (20, 10))
-    trait_range = None
-    return IR12Speciation(env_field=elev, grid_x=x, grid_y=y, init_trait_range=trait_range, **params)
+    return IR12Speciation(env_field=elev, grid_x=x, grid_y=y,
+                          init_min_trait=0, init_max_trait=1, **params)
 
 
 def test_parapatric_speciation(ps_process):
