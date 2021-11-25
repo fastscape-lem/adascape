@@ -190,7 +190,7 @@ class TestParapatricSpeciationModel(object):
         X, Y = grid
         points = np.column_stack([X.ravel() + 0.1, Y.ravel() + 0.1])
 
-        opt_trait = model._get_optimal_env_value(env_field, points)
+        opt_trait = model._get_local_env_value(env_field, points)
 
         np.testing.assert_array_equal(opt_trait, env_field.ravel())
 
@@ -275,7 +275,7 @@ class TestParapatricSpeciationModel(object):
         (0., 1, 'raise'),
         (0., 1, 'warn'),
         (0., 1, 'ignore'),
-        (1., 1e3, 'ignore')
+        #(1., 1e3, 'ignore')
     ])
     def test_update_population_extinction(self,
                                           initialized_model,

@@ -11,6 +11,7 @@ class SpeciationModelBase(object):
     """
     Speciation Model base class with common methods for the different types of speciation models.
     """
+
     def __init__(self, grid_x, grid_y, init_pop_size,
                  random_seed=None):
         """
@@ -25,7 +26,6 @@ class SpeciationModelBase(object):
         self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
                              'y': np.array([grid_y.min(), grid_y.max()])}
         self._grid_index = self._build_grid_index([grid_x, grid_y])
-
         self._population = {}
         self._init_pop_size = init_pop_size
         self._rng = np.random.default_rng(random_seed)
@@ -34,11 +34,15 @@ class SpeciationModelBase(object):
         self._truncnorm = stats.truncnorm
         self._truncnorm.random_state = self._rng
 
-    def initialize(self, trait_range=(0.5, 0.5), x_range=None, y_range=None):
+        self._params = {}
+        self._env_field_bounds = None
+
+    def initialize(self, env_field, trait_range=(0.5, 0.5), x_range=None, y_range=None):
         """
         Initialization of a group of individuals with randomly distributed traits, which are
         randomly located in two dimensional space.
 
+        :param env_field: array-like
         :param trait_range: tuple
             trait range of initial population
         :param x_range: tuple, optional
@@ -116,9 +120,9 @@ class SpeciationModelBase(object):
         grid_points = np.column_stack([c.ravel() for c in grid_coords])
         return spatial.cKDTree(grid_points)
 
-    def _get_optimal_env_value(self, env_field, pop_points):
+    def _get_local_env_value(self, env_field, pop_points):
         """
-        Optimal environmental value defined on the grid
+        Local environmental value defined on the grid
         of the respective environmental field and taken
         as the nearest grid node to the location of
         each individual.
@@ -137,9 +141,14 @@ class SpeciationModelBase(object):
         # TODO: Make boundary conditions of speciation model to match those of LEM
         delta_bounds_x = self._grid_bounds['x'][:, None] - x
         delta_bounds_y = self._grid_bounds['y'][:, None] - y
-        new_x = self._truncnorm.rvs(*(delta_bounds_x/sigma), loc=x, scale=sigma)
-        new_y = self._truncnorm.rvs(*(delta_bounds_y/sigma), loc=y, scale=sigma)
+        new_x = self._truncnorm.rvs(*(delta_bounds_x / sigma), loc=x, scale=sigma)
+        new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
+
+    def _optimal_trait_lin(self, env_field, local_env_val, slope=0.95):
+        norm_loc_env_field = (local_env_val - env_field.min()) / (env_field.max() - env_field.min())
+        opt_trait = ((slope * (norm_loc_env_field - 0.5)) + 0.5)
+        return opt_trait
 
 
 class IR12SpeciationModel(SpeciationModelBase):
@@ -296,7 +305,9 @@ class IR12SpeciationModel(SpeciationModelBase):
             # compute offspring sizes
             r_d = self._params['capacity'] / self._count_neighbors(pop_points)
 
-            opt_trait = self._get_optimal_env_value(env_field, pop_points)
+            local_env = self._get_local_env_value(env_field, pop_points)
+            opt_trait = self._optimal_trait_lin(env_field, local_env)
+            #opt_trait = self._get_local_env_value(env_field, pop_points)
 
             fitness = np.exp(-(self._population['trait'] - opt_trait) ** 2
                              / (2 * sigma_w ** 2))
@@ -408,7 +419,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                  slope_topt_env=0.95, car_cap_max=500, sigma_opt_trait=0.3, mut_prob=0.005, sigma_mut=0.05,
                  sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
-        Initialization of
+        Initialization of speciation model
         :param grid_x: array-like
             grid x-coordinate
         :param grid_y: array-like
@@ -443,18 +454,18 @@ class DD03SpeciationModel(SpeciationModelBase):
         """
         super().__init__(grid_x, grid_y, init_pop_size, random_seed)
         self._params = {
-                'lifespan': lifespan,
-                'birth_rate': birth_rate,
-                'movement_rate': movement_rate,
-                'slope_topt_env': slope_topt_env,
-                'car_cap_max': car_cap_max,
-                'sigma_opt_trait': sigma_opt_trait,
-                'mut_prob': mut_prob,
-                'sigma_mut': sigma_mut,
-                'sigma_mov': sigma_mov,
-                'sigma_comp_trait': sigma_comp_trait,
-                'sigma_comp_dist': sigma_comp_dist
-            }
+            'lifespan': lifespan,
+            'birth_rate': birth_rate,
+            'movement_rate': movement_rate,
+            'slope_topt_env': slope_topt_env,
+            'car_cap_max': car_cap_max,
+            'sigma_opt_trait': sigma_opt_trait,
+            'mut_prob': mut_prob,
+            'sigma_mut': sigma_mut,
+            'sigma_mov': sigma_mov,
+            'sigma_comp_trait': sigma_comp_trait,
+            'sigma_comp_dist': sigma_comp_dist
+        }
 
         self.dtf = pd.DataFrame({
             'time': np.array([]),
@@ -477,22 +488,23 @@ class DD03SpeciationModel(SpeciationModelBase):
         return np.where(np.logical_and(y_bounds[0] < y, y < y_bounds[1]), y,
                         np.where(y < y_bounds[0], y + y_bounds[1], y - y_bounds[1]))
 
-    def update(self, Z):
+    def update(self, env_field):
         """
         Update method
-        :param Z:
+        :param env_field:
         :return:
         """
         # Compute local individual environmental field
-        z_i = self._get_optimal_env_value(Z, np.column_stack([self._population['x'], self._population['y']]))
+        local_env = self._get_local_env_value(env_field, np.column_stack([self._population['x'], self._population['y']]))
+        # Compute optimal trait value
+        opt_trait = self._optimal_trait_lin(env_field, local_env, slope=self._params['slope_topt_env'])
 
         # Compute event probabilities
         birth_i = self._population['trait'].size * [self._params['birth_rate']]
-        death_i = death_rate(trait=self._population['trait'], x=self._population['x'], y=self._population['y'], z=z_i,
+        death_i = death_rate(trait=self._population['trait'], x=self._population['x'], y=self._population['y'],
+                             opt_trait=opt_trait,
                              xmin=self._grid_bounds['x'][0], xmax=self._grid_bounds['x'][1],
                              ymin=self._grid_bounds['y'][0], ymax=self._grid_bounds['y'][1],
-                             zmin=np.min(Z), zmax=np.max(Z),
-                             slope_topt_env=self._params['slope_topt_env'],
                              car_cap_max=self._params['car_cap_max'],
                              sigma_opt_trait=self._params['sigma_opt_trait'],
                              sigma_comp_trait=self._params['sigma_comp_trait'],
@@ -554,7 +566,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
 
 @jit(nopython=True)
-def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0, zmax=1.0, slope_topt_env=0.95,
+def death_rate(trait, x, y, opt_trait, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0,
                car_cap_max=500., sigma_opt_trait=0.3, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
     """
     Logistic death rate for DD03 Speciation model
@@ -565,12 +577,8 @@ def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0,
         location along the x coord
     :param y: 1d array, floats
         location along the y coord
-    :param z: 1d array, floats
-        optimal environmental value
-    :param zmax: value, float
-        maximum value of environmental field
-    :param zmin: value, float
-        maximum value of environmental field
+    :param opt_trait: 1d array, floats
+        optimal trait value
     :param ymax: value, float
         maximum value of y coordinate
     :param ymin: value, float
@@ -579,8 +587,6 @@ def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0,
         maximum value of y coordinate
     :param xmin: value, float
         minimum value of y coordinate
-    :param slope_topt_env: value, float
-        slope of the relationship between environmental field and optimal trait value
     :param car_cap_max: value, float
         maximum carrying capacity
     :param sigma_opt_trait: value, float
@@ -592,14 +598,12 @@ def death_rate(trait, x, y, z, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0, zmin=0.0,
     :return: 1d array, floats
         death rate per individual
     """
-    x = (x-xmin)/(xmax-xmin)
-    y = (y-ymin)/(ymax-ymin)
-    z = (z-zmin)/(zmax-zmin)
+    x = (x - xmin) / (xmax - xmin)
+    y = (y - ymin) / (ymax - ymin)
     delta_trait = np.expand_dims(trait, 1) - trait
     delta_xy = np.sqrt((np.expand_dims(x, 1) - x) ** 2 + (np.expand_dims(y, 1) - y) ** 2)
     delta_trait_norm = np.exp(-0.5 * delta_trait ** 2 / sigma_comp_trait ** 2)
     delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
     n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
-    topt = ((slope_topt_env * (z - 0.5)) + 0.5)
-    k = car_cap_max * np.exp(-0.5 * (trait - topt) ** 2 / sigma_opt_trait ** 2)
+    k = car_cap_max * np.exp(-0.5 * (trait - opt_trait) ** 2 / sigma_opt_trait ** 2)
     return n_eff / k
