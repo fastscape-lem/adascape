@@ -24,19 +24,8 @@ class Speciation:
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
 
-
-@xs.process
-class IR12Speciation(Speciation):
-    """Irwin (2012) Speciation model as a fastscape extension.
-    For more info, see :class:`paraspec.base.IR12SpeciationModel`.
-    """
-    nb_radius = xs.variable(description="fixed neighborhood radius")
-    capacity = xs.variable(description="carrying capacity within a neighborhood")
-    sigma_d = xs.variable(description="controls dispersal magnitude")
-    sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_w = xs.variable(description="scales fitness")
-
-    size = xs.variable(intent="out", description="population size")
+    _model = xs.any_object(description="speciation model instance")
+    _population = xs.any_object(description="speciation model state dictionary")
 
     id = xs.on_demand(
         dims='pop',
@@ -58,6 +47,47 @@ class IR12Speciation(Speciation):
         dims='pop',
         description="individual's actual trait value"
     )
+
+    @property
+    def population(self):
+        if self._population is None:
+            self._population = self._model.population
+        return self._population
+
+    @id.compute
+    def _get_id(self):
+        return self.population["id"]
+
+    @parent.compute
+    def _get_parent(self):
+        return self.population["parent"]
+
+    @x.compute
+    def _get_x(self):
+        return self.population["x"]
+
+    @y.compute
+    def _get_y(self):
+        return self.population["y"]
+
+    @trait.compute
+    def _get_trait(self):
+        return self.population["trait"]
+
+
+@xs.process
+class IR12Speciation(Speciation):
+    """Irwin (2012) Speciation model as a fastscape extension.
+    For more info, see :class:`paraspec.base.IR12SpeciationModel`.
+    """
+    nb_radius = xs.variable(description="fixed neighborhood radius")
+    capacity = xs.variable(description="carrying capacity within a neighborhood")
+    sigma_d = xs.variable(description="controls dispersal magnitude")
+    sigma_mut = xs.variable(description="controls mutation magnitude")
+    sigma_w = xs.variable(description="scales fitness")
+
+    size = xs.variable(intent="out", description="population size")
+
     opt_trait = xs.on_demand(
         dims='pop',
         description="individual's optimal trait value"
@@ -115,36 +145,9 @@ class IR12Speciation(Speciation):
     def finalize_step(self, dt):
         self._model.update_population(dt)
 
-    @property
-    def population(self):
-        if self._population is None:
-            self._population = self._model.population
-
-        return self._population
-
-    @id.compute
-    def _get_id(self):
-        return self.population["id"]
-
-    @parent.compute
-    def _get_parent(self):
-        return self.population["parent"]
-
-    @x.compute
-    def _get_x(self):
-        return self.population["x"]
-
-    @y.compute
-    def _get_y(self):
-        return self.population["y"]
-
     @opt_trait.compute
     def _get_opt_trait(self):
         return self.population["opt_trait"]
-
-    @trait.compute
-    def _get_trait(self):
-        return self.population["trait"]
 
     @r_d.compute
     def _get_r_d(self):
@@ -175,27 +178,6 @@ class DD03Speciation(Speciation):
     sigma_comp_trait = xs.variable(description="controls competition strength among individual based trait")
     sigma_comp_dist = xs.variable(description="controls competition strength among individual based distance")
     size = xs.variable(intent="out", description="abundance of individuals")
-
-    id = xs.on_demand(
-        dims='pop',
-        description="individual's id"
-    )
-    parent = xs.on_demand(
-        dims='pop',
-        description="individual's ancestor"
-    )
-    x = xs.on_demand(
-        dims='pop',
-        description="individual's x-position"
-    )
-    y = xs.on_demand(
-        dims='pop',
-        description="individual's y-position"
-    )
-    trait = xs.on_demand(
-        dims='pop',
-        description="individual's actual trait value"
-    )
 
     def _get_model_params(self):
         return {
@@ -233,32 +215,6 @@ class DD03Speciation(Speciation):
 
         self.size = self._model.population_size
         self._model.update(self.env_field)
-
-    @property
-    def population(self):
-        if self._population is None:
-            self._population = self._model.population
-        return self._population
-
-    @id.compute
-    def _get_id(self):
-        return self.population["id"]
-
-    @parent.compute
-    def _get_parent(self):
-        return self.population["parent"]
-
-    @x.compute
-    def _get_x(self):
-        return self.population["x"]
-
-    @y.compute
-    def _get_y(self):
-        return self.population["y"]
-
-    @trait.compute
-    def _get_trait(self):
-        return self.population["trait"]
 
 
 @xs.process
