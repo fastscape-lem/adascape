@@ -7,7 +7,7 @@ import scipy.spatial as spatial
 from numba import jit
 
 
-class SpeciationModelBase(object):
+class SpeciationModelBase:
     """
     Speciation Model base class with common methods for the different types of speciation models.
     """

@@ -7,7 +7,7 @@ from .base import DD03SpeciationModel
 
 
 @xs.process
-class Speciation(object):
+class Speciation:
     """
     Speciation model as a fastscape extension
     """
