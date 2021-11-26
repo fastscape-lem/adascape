@@ -4,7 +4,7 @@ import pytest
 pytest.importorskip("fastscape")  # isort:skip
 
 from paraspec.fastscape_ext import (IR12Speciation,
-                                    IR12EnvironmentElevation,
+                                    EnvironmentElevation,
                                     ir12spec_model)
 
 @pytest.fixture
@@ -45,7 +45,7 @@ def test_parapatric_speciation(ps_process):
 
 def test_parapatric_environment_elevation():
     elev = np.random.rand(10, 20)
-    p = IR12EnvironmentElevation(elevation=elev)
+    p = EnvironmentElevation(elevation=elev)
 
     p.initialize()
 
@@ -55,4 +55,4 @@ def test_parapatric_environment_elevation():
 
 def test_paraspec_model():
     assert isinstance(ir12spec_model["life"], IR12Speciation)
-    assert isinstance(ir12spec_model["life_env"], IR12EnvironmentElevation)
+    assert isinstance(ir12spec_model["life_env"], EnvironmentElevation)
