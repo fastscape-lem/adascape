@@ -81,8 +81,8 @@ class IR12Speciation(Speciation):
     For more info, see :class:`paraspec.base.IR12SpeciationModel`.
     """
     nb_radius = xs.variable(description="fixed neighborhood radius")
-    capacity = xs.variable(description="carrying capacity within a neighborhood")
-    sigma_d = xs.variable(description="controls dispersal magnitude")
+    car_cap = xs.variable(description="carrying capacity within a neighborhood")
+    sigma_mov = xs.variable(description="controls dispersal magnitude")
     sigma_mut = xs.variable(description="controls mutation magnitude")
     sigma_w = xs.variable(description="scales fitness")
 
@@ -108,8 +108,8 @@ class IR12Speciation(Speciation):
     def _get_model_params(self):
         return {
             "nb_radius": self.nb_radius,
-            "capacity": self.capacity,
-            "sigma_d": self.sigma_d,
+            "car_cap": self.car_cap,
+            "sigma_mov": self.sigma_mov,
             "sigma_mut": self.sigma_mut,
             "sigma_w": self.sigma_w,
             "random_seed": self.random_seed,
@@ -122,7 +122,7 @@ class IR12Speciation(Speciation):
             X, Y,
             self.init_size,
             # TODO: maybe expose kwargs below as process inputs
-            m_freq=1.,
+            mut_prob=1.,
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
@@ -175,8 +175,8 @@ class DD03Speciation(Speciation):
     mut_prob = xs.variable(description="mutation probability")
     sigma_mut = xs.variable(description="controls mutation magnitude")
     sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
-    sigma_comp_trait = xs.variable(description="controls competition strength among individual based trait")
-    sigma_comp_dist = xs.variable(description="controls competition strength among individual based distance")
+    sigma_comp_trait = xs.variable(description="controls competition strength among individuals based trait")
+    sigma_comp_dist = xs.variable(description="controls competition strength among individuals based distance")
     size = xs.variable(intent="out", description="abundance of individuals")
 
     def _get_model_params(self):

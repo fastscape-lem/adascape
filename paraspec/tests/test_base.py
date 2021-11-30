@@ -13,11 +13,11 @@ def params():
     return {
         'nb_radius': 5,
         'lifespan': 1,
-        'capacity': 5,
+        'car_cap': 5,
         'sigma_w': 0.5,
-        'sigma_d': 4,
+        'sigma_mov': 4,
         'sigma_mut': 0.5,
-        'm_freq': 0.04,
+        'mut_prob': 0.04,
         'random_seed': 1234,
         'on_extinction': 'ignore',
         'always_direct_parent': True
@@ -55,11 +55,11 @@ def model_repr():
     Parameters:
         nb_radius: 5
         lifespan: 1
-        capacity: 5
+        car_cap: 5
         sigma_w: 0.5
-        sigma_d: 4
+        sigma_mov: 4
         sigma_mut: 0.5
-        m_freq: 0.04
+        mut_prob: 0.04
         random_seed: 1234
         on_extinction: ignore
         always_direct_parent: True
@@ -73,11 +73,11 @@ def initialized_model_repr():
     Parameters:
         nb_radius: 5
         lifespan: 1
-        capacity: 5
+        car_cap: 5
         sigma_w: 0.5
-        sigma_d: 4
+        sigma_mov: 4
         sigma_mut: 0.5
-        m_freq: 0.04
+        mut_prob: 0.04
         random_seed: 1234
         on_extinction: ignore
         always_direct_parent: True
@@ -175,7 +175,7 @@ class TestParapatricSpeciationModel(object):
 
         model = IR12SpeciationModel(X, Y, 10, **params)
 
-        expected = (params['sigma_w'], params['sigma_d'], params['sigma_mut'])
+        expected = (params['sigma_w'], params['sigma_mov'], params['sigma_mut'])
         assert model._get_scaled_params(4) == expected
 
     def test_count_neighbors(self, model, grid):
@@ -271,7 +271,7 @@ class TestParapatricSpeciationModel(object):
             assert parents2.values.max() <= parents0.values.max()
             assert parents3.values.max() > parents2.values.max()
 
-    @pytest.mark.parametrize('capacity_mul,env_field_mul,on_extinction', [
+    @pytest.mark.parametrize('car_cap_mul,env_field_mul,on_extinction', [
         (0., 1, 'raise'),
         (0., 1, 'warn'),
         (0., 1, 'ignore'),
@@ -280,7 +280,7 @@ class TestParapatricSpeciationModel(object):
     def test_update_population_extinction(self,
                                           initialized_model,
                                           env_field,
-                                          capacity_mul,
+                                          car_cap_mul,
                                           env_field_mul,
                                           on_extinction):
 
@@ -293,7 +293,7 @@ class TestParapatricSpeciationModel(object):
         initialized_model._params['on_extinction'] = on_extinction
 
         # no offspring via either r_d values = 0 or very low fitness values
-        initialized_model._params['capacity'] *= capacity_mul
+        initialized_model._params['car_cap'] *= car_cap_mul
         field = env_field * env_field_mul
 
         if on_extinction == 'raise':

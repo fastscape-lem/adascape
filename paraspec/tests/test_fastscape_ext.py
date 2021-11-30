@@ -12,9 +12,9 @@ def ps_process():
     params = {
         'init_size': 10,
         'nb_radius': 5,
-        'capacity': 10,
+        'car_cap': 10,
         'sigma_w': 0.5,
-        'sigma_d': 4,
+        'sigma_mov': 4,
         'sigma_mut': 0.5,
         'random_seed': 1234,
     }

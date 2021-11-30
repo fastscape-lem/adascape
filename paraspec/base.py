@@ -9,17 +9,27 @@ from numba import jit
 
 class SpeciationModelBase:
     """
-    Speciation Model base class with common methods for the different types of speciation models.
+    Speciation Model base class with common methods for the different
+    types of speciation models.
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size,
                  random_seed=None):
         """
         Initialization of based model.
-        :param grid_x:
-        :param grid_y:
-        :param init_pop_size:
-        :param random_seed:
+
+        Parameters
+        ----------
+        grid_x : array-like
+            Grid x-coordinates.
+        grid_y : array_like
+            Grid y-coordinates.
+        init_pop_size : int
+            Total number of individuals generated as the initial population.
+        random_seed : int or :class:`numpy.random.default_rng` object
+            Fixed random state for reproducible experiments.
+            If None (default), results will differ from one run
+            to another.
         """
         grid_x = np.asarray(grid_x)
         grid_y = np.asarray(grid_y)
@@ -37,25 +47,25 @@ class SpeciationModelBase:
         self._params = {}
         self._env_field_bounds = None
 
-    def initialize(self, env_field, trait_range=(0.5, 0.5), x_range=None, y_range=None):
+    def initialize(self, trait_range=(0.5, 0.5), x_range=None, y_range=None):
         """
-        Initialization of a group of individuals with randomly distributed traits, which are
-        randomly located in two dimensional space.
+        Initialization of a group of individuals with randomly distributed traits,
+        and which are randomly located in two dimensional grid.
 
-        :param env_field: array-like
-        :param trait_range: tuple
+        Parameters
+        ----------
+        trait_range : tuple
             trait range of initial population
-        :param x_range: tuple, optional
+        x_range : tuple, optional
             Range (min, max) to define initial spatial bounds
             of population in the x direction. Values must be contained
             within grid bounds. Default ('None') will initialize population
             within grid bounds in the x direction.
-        :param y_range:tuples, optional
+        y_range : tuple, optional
             Range (min, max) to define initial spatial bounds
             of population in the y direction. Values must be contained
             within grid bounds. Default ('None') will initialize population
             within grid bounds in the y direction.
-        :return:
         """
 
         x_bounds = self._grid_bounds['x']
@@ -79,20 +89,37 @@ class SpeciationModelBase:
 
     @property
     def params(self):
-        """Model parameters (dict)."""
+        """Model parameters.
+
+        Returns
+        -------
+        dict
+            Model parameters
+        """
         return self._params
 
     @property
     def population(self):
-        """Population data (dict) at the current time step."""
+        """Population data at the current time step.
+
+        Returns
+        -------
+        dict
+            Population data
+        """
         self._set_direct_parent = True
         return self._population
 
     @property
     def population_size(self):
         """Number of individuals in the population at the current time
-        step (return None if the population is not yet initialized).
+        step.
 
+        Returns
+        -------
+        int or None
+            size of the population
+            (return None if the population is not yet initialized)
         """
         if not self._population:
             return None
@@ -100,12 +127,19 @@ class SpeciationModelBase:
             return self._population['trait'].size
 
     def to_dataframe(self, varnames=None):
-        """Return the population data at the current time step as a
-        :class:`pandas.Dataframe`.
+        """Population data at the current time step as a
+        pandas Dataframe.
 
-        :param varnames: list or string, optional
+        Parameters
+        ----------
+        varnames : list or string, optional
             Only export those variable name(s) as dataframe column(s).
             Default: export all variables.
+
+        Returns
+        -------
+        pandas.Dataframe
+            Population data
         """
         if varnames is None:
             data = self.population
@@ -117,6 +151,20 @@ class SpeciationModelBase:
 
     @staticmethod
     def _build_grid_index(grid_coords):
+        """
+        Builds scipy kd-tre for a quick indexing of all
+        points in a grid.
+
+        Parameters
+        ----------
+        grid_coords : list of arrays
+            x and y points in the grid
+
+        Returns
+        -------
+        scipy.spatial.cKDTree
+            kd-tree index object for the set of grid points
+        """
         grid_points = np.column_stack([c.ravel() for c in grid_coords])
         return spatial.cKDTree(grid_points)
 
@@ -126,17 +174,56 @@ class SpeciationModelBase:
         of the respective environmental field and taken
         as the nearest grid node to the location of
         each individual.
-        :param env_field: array-like
-        :param pop_points: array-like
-        :return:
+
+        Parameters
+        ----------
+        env_field : array-like
+            Environmental field defined on the grid.
+        pop_points : array-like
+            x and y location of individuals on the grid.
+
+        Returns
+        -------
+        array_like
+            value of environmental field near the individual location.
         """
         _, idx = self._grid_index.query(pop_points)
         return env_field.ravel()[idx]
 
     def _sample_in_range(self, values_range):
+        """
+        Draw a random sample of values for a given range following
+        a uniform distribution.
+
+        Parameters
+        ----------
+        values_range : list or tuple
+            max and min value from with to draw random values
+
+        Returns
+        -------
+        array_like
+            random sample of values between given range
+        """
         return self._rng.uniform(values_range[0], values_range[1], self._init_pop_size)
 
-    def _within_bounds(self, x, y, sigma):
+    def mov_within_bounds(self, x, y, sigma):
+        """
+        Move and check if the location of individuals are within grid range.
+
+        Parameters
+        ----------
+        x : array_like
+            locations along the x coordinate
+        y : array_like
+            locations along the y coordinate
+        sigma : float
+            movement variability
+        Returns
+        -------
+        array-like
+            new coordinate for the moved individuals.
+        """
         # TODO: check effects of movement and boundary conditions
         # TODO: Make boundary conditions of speciation model to match those of LEM
         delta_bounds_x = self._grid_bounds['x'][:, None] - x
@@ -145,7 +232,30 @@ class SpeciationModelBase:
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
 
-    def _optimal_trait_lin(self, env_field, local_env_val, slope=0.95):
+    @staticmethod
+    def _optimal_trait_lin(env_field, local_env_val, slope=0.95):
+        """
+        Normalized optimal trait value as a linear relationship
+        with environmental field. Noticed that the local
+        environmental field has been computed as a normalized
+        local environmental field value based on the maximum and
+        minimum values of the complete environmental field.
+
+        Parameters
+        ----------
+        env_field : array-like
+            Environmental field defined on the grid.
+         local_env_val : array-like
+            local environmental field for each individual
+        slope : float
+            slope of the linear relationship between the
+            environmental field and the optimal trait value
+
+        Returns
+        -------
+        array-like
+            optimal trait values for each individual.
+        """
         norm_loc_env_field = (local_env_val - env_field.min()) / (env_field.max() - env_field.min())
         opt_trait = ((slope * (norm_loc_env_field - 0.5)) + 0.5)
         return opt_trait
@@ -180,24 +290,18 @@ class IR12SpeciationModel(SpeciationModelBase):
     within the domain delineated by the grid.
     """
 
-    def __init__(self, grid_x, grid_y, init_pop_size, nb_radius=500., lifespan=None, capacity=1000., sigma_w=500.,
-                 sigma_d=5., sigma_mut=500., m_freq=0.05, random_seed=None, on_extinction='warn',
+    def __init__(self, grid_x, grid_y, init_pop_size, nb_radius=500., lifespan=None, car_cap=1000., sigma_w=500.,
+                 sigma_mov=5., sigma_mut=500., mut_prob=0.05, random_seed=None, on_extinction='warn',
                  always_direct_parent=True):
-        """Setup a new speciation model.
+        """Initialization of speciation model without competition.
 
         Parameters
         ----------
-        grid_x : array-like
-            Grid x-coordinates.
-        grid_y : array_like
-            Grid y-coordinates.
-        init_pop_size : int
-            Total number of individuals generated as the initial population.
         nb_radius: float
             Fixed radius of the circles that define the neighborhood
             around each individual.
-        capacity: int
-            Capacity of population within the neighborhood area.
+        car_cap: int
+            Carrying capacity of group of individuals within the neighborhood area.
         lifespan: float, optional
             Reproductive lifespan of organism. Used to scale the
             parameters below with time step length. If None (default), the
@@ -205,16 +309,12 @@ class IR12SpeciationModel(SpeciationModelBase):
             won't be scaled.
         sigma_w: float
             Width of fitness curve.
-        sigma_d: float
+        sigma_mov: float
             Width of dispersal curve.
         sigma_mut: float
             Width of mutation curve.
-        m_freq: float
+        mut_prob: float
             Probability of mutation occurring in offspring.
-        random_seed : int or :class:`numpy.random.RandomState` object
-            Fixed random state for reproducible experiments.
-            If None (default), results will differ from one run
-            to another.
         on_extinction : {'warn', 'raise', 'ignore'}
             Behavior when no offspring is generated (total extinction of
             population) during model runtime. 'warn' (default) displays
@@ -246,11 +346,11 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._params = {
             'nb_radius': nb_radius,
             'lifespan': lifespan,
-            'capacity': capacity,
+            'car_cap': car_cap,
             'sigma_w': sigma_w,
-            'sigma_d': sigma_d,
+            'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
-            'm_freq': m_freq,
+            'mut_prob': mut_prob,
             'random_seed': random_seed,
             'on_extinction': on_extinction,
             'always_direct_parent': always_direct_parent
@@ -259,7 +359,19 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._set_direct_parent = True
 
     def _get_n_gen(self, dt):
-        # number of generations during one time step.
+        """
+        Number of generations during one time step.
+
+        Parameters
+        ----------
+        dt : float
+            Time step duration.
+
+        Returns
+        -------
+        float
+            number of generations per time step.
+        """
 
         if self._params['lifespan'] is None:
             return 1.
@@ -267,18 +379,44 @@ class IR12SpeciationModel(SpeciationModelBase):
             return dt / self._params['lifespan']
 
     def _get_scaled_params(self, dt):
-        # Scale sigma parameters according to the number of generations that
-        # succeed to each other during a time step.
+        """Scale sigma parameters according to the number of generations that
+        succeed to each other during a time step.
+
+        Parameters
+        ----------
+        dt : float
+            Time step duration.
+
+        Returns
+        -------
+        float
+            scaled rates.
+
+        """
 
         n_gen = self._get_n_gen(dt)
 
         sigma_w = self._params['sigma_w']
-        sigma_d = self._params['sigma_d'] * np.sqrt(n_gen)
+        sigma_d = self._params['sigma_mov'] * np.sqrt(n_gen)
         sigma_mut = self._params['sigma_mut'] * np.sqrt(n_gen)
 
         return sigma_w, sigma_d, sigma_mut
 
     def _count_neighbors(self, pop_points):
+        """
+        count number of neighbouring individual in a given radius.
+
+        Parameters
+        ----------
+        pop_points : list of array
+            location of individuals in a grid.
+
+        Returns
+        -------
+        array-like
+            number of neighbouring individual in a give radius.
+
+        """
         index = spatial.cKDTree(pop_points)
         neighbors = index.query_ball_tree(index, self._params['nb_radius'])
 
@@ -303,7 +441,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                                           self._population['y']])
 
             # compute offspring sizes
-            r_d = self._params['capacity'] / self._count_neighbors(pop_points)
+            r_d = self._params['car_cap'] / self._count_neighbors(pop_points)
 
             local_env = self._get_local_env_value(env_field, pop_points)
             opt_trait = self._optimal_trait_lin(env_field, local_env)
@@ -333,6 +471,10 @@ class IR12SpeciationModel(SpeciationModelBase):
     def update_population(self, dt):
         """Update population data (generate, mutate and disperse offspring).
 
+        Parameters
+        ----------
+        dt : float
+            Time step duration.
         """
         _, sigma_d, sigma_mut = self._get_scaled_params(dt)
 
@@ -374,9 +516,9 @@ class IR12SpeciationModel(SpeciationModelBase):
                 new_population['trait'], sigma_mut)
 
             # disperse offspring within grid bounds
-            new_x, new_y = self._within_bounds(new_population['x'],
-                                               new_population['y'],
-                                               sigma_d)
+            new_x, new_y = self.mov_within_bounds(new_population['x'],
+                                                  new_population['y'],
+                                                  sigma_d)
             new_population['x'] = new_x
             new_population['y'] = new_y
 
@@ -419,37 +561,40 @@ class DD03SpeciationModel(SpeciationModelBase):
                  slope_topt_env=0.95, car_cap_max=500, sigma_opt_trait=0.3, mut_prob=0.005, sigma_mut=0.05,
                  sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
-        Initialization of speciation model
-        :param grid_x: array-like
+        Initialization of speciation model with competition.
+
+        Parameters
+        ----------
+        grid_x : array-like
             grid x-coordinate
-        :param grid_y: array-like
+        grid_y : array-like
             grid y-coordinate
-        :param init_pop_size: integer
+        init_pop_size : integer
             initial number of individuals
-        :param random_seed: integer
+        random_seed : integer
             seed used in random number generator
-        :param lifespan: float, optional
+        lifespan : float, optional
             Reproductive lifespan of organism. If None (default), the
             lifespan will always match time step length
-        :param birth_rate: integer or float
+        birth_rate : integer or float
             birth rate of individuals
-        :param movement_rate: integer of float
+        movement_rate : integer of float
             movement/dispersion rate of individuals
-        :param slope_topt_env: float
+        slope_topt_env : float
             slope of the relationship between optimum trait and environmental field
-        :param car_cap_max: integer
+        car_cap_max : integer
             maximum carrying capacity
-        :param sigma_opt_trait: float
+        sigma_opt_trait : float
             variability of carrying capacity
-        :param mut_prob: float
+        mut_prob : float
             mutation probability
-        :param sigma_mut: float
+        sigma_mut : float
             variability of mutated trait
-        :param sigma_mov: float
+        sigma_mov : float
             variability of movement distance
-        :param sigma_comp_trait: float
+        sigma_comp_trait : float
             variability of competition trait distance between individuals
-        :param sigma_comp_dist: float
+        sigma_comp_dist : float
             variability of competition spatial distance between individuals
         """
         super().__init__(grid_x, grid_y, init_pop_size, random_seed)
@@ -478,21 +623,17 @@ class DD03SpeciationModel(SpeciationModelBase):
             'trait': np.array([])
         })
 
-    def _x_within_bounds(self, x):
-        x_bounds = self._grid_bounds['x']
-        return np.where(np.logical_and(x_bounds[0] < x, x < x_bounds[1]), x,
-                        np.where(x < x_bounds[0], x_bounds[0], x_bounds[1]))
-
-    def _y_within_bounds(self, y):
-        y_bounds = self._grid_bounds['y']
-        return np.where(np.logical_and(y_bounds[0] < y, y < y_bounds[1]), y,
-                        np.where(y < y_bounds[0], y + y_bounds[1], y - y_bounds[1]))
-
     def update(self, env_field):
         """
-        Update method
-        :param env_field:
-        :return:
+        Update of individuals' properties for a given environmental field.
+        The computation is based on the Gillespie algorithm for a population
+        of individuals that grows, move, and dies.
+
+        Parameters
+        ----------
+        env_field : array-like
+            Environmental field defined on the grid.
+
         """
         # Compute local individual environmental field
         local_env = self._get_local_env_value(env_field, np.column_stack([self._population['x'], self._population['y']]))
@@ -523,9 +664,9 @@ class DD03SpeciationModel(SpeciationModelBase):
         # Birth
         offspring['id'] = np.arange(self._population['id'].max() + 1,
                                     self._population['id'][events_i == 'B'].size + self._population['id'].max() + 1)
-        offspring['parent'] = self._population['id'][np.where(events_i == 'B')]
-        offspring['x'] = self._x_within_bounds(self._population['x'][events_i == 'B'])
-        offspring['y'] = self._y_within_bounds(self._population['y'][events_i == 'B'])
+        offspring['parent'] = self._population['id'][events_i == 'B']
+        offspring['x'] = self._population['x'][events_i == 'B']
+        offspring['y'] = self._population['y'][events_i == 'B']
         mu_prob = self._rng.uniform(0, 1, self._population['trait'][events_i == 'B'].size) < self._params['mut_prob']
 
         offspring['trait'] = np.where(mu_prob,
@@ -534,9 +675,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                                       self._population['trait'][events_i == 'B'])
 
         # Movement
-        new_x, new_y = self._within_bounds(self._population['x'][events_i == 'M'],
-                                           self._population['y'][events_i == 'M'],
-                                           self._params['sigma_mov'])
+        new_x, new_y = self.mov_within_bounds(self._population['x'][events_i == 'M'],
+                                              self._population['y'][events_i == 'M'],
+                                              self._params['sigma_mov'])
         extant['x'][events_i == 'M'] = new_x
         extant['y'][events_i == 'M'] = new_y
 
@@ -571,31 +712,38 @@ def death_rate(trait, x, y, opt_trait, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0,
     """
     Logistic death rate for DD03 Speciation model
     implemented using numba
-    :param trait: 1d array, floats
+
+    Parameters
+    ----------
+
+    trait : 1d array, floats
         trait value per individual
-    :param x: 1d array, floats
+    x : 1d array, floats
         location along the x coord
-    :param y: 1d array, floats
+    y : 1d array, floats
         location along the y coord
-    :param opt_trait: 1d array, floats
+    opt_trait : 1d array, floats
         optimal trait value
-    :param ymax: value, float
+    ymax : value, float
         maximum value of y coordinate
-    :param ymin: value, float
+    ymin : value, float
         minimum value of y coordinate
-    :param xmax: value, float
+    xmax : value, float
         maximum value of y coordinate
-    :param xmin: value, float
+    xmin : value, float
         minimum value of y coordinate
-    :param car_cap_max: value, float
+    car_cap_max : value, float
         maximum carrying capacity
-    :param sigma_opt_trait: value, float
+    sigma_opt_trait : value, float
         variability of trait to abiotic condition
-    :param sigma_comp_trait: value, float
+    sigma_comp_trait : value, float
         competition variability as a measure of the trait difference between individuals
-    :param sigma_comp_dist: value, float
+    sigma_comp_dist : value, float
         competition variability as a measure of the spatial distance between individuals
-    :return: 1d array, floats
+
+    Returns
+    -------
+    1d array, floats
         death rate per individual
     """
     x = (x - xmin) / (xmax - xmin)
