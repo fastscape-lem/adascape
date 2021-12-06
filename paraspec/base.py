@@ -445,7 +445,7 @@ class IR12SpeciationModel(SpeciationModelBase):
 
             local_env = self._get_local_env_value(env_field, pop_points)
             opt_trait = self._optimal_trait_lin(env_field, local_env)
-            #opt_trait = self._get_local_env_value(env_field, pop_points)
+            # opt_trait = self._get_local_env_value(env_field, pop_points)
 
             fitness = np.exp(-(self._population['trait'] - opt_trait) ** 2
                              / (2 * sigma_w ** 2))
@@ -512,8 +512,10 @@ class IR12SpeciationModel(SpeciationModelBase):
                 last_id, last_id + n_offspring.sum())
 
             # mutate offspring
-            new_population['trait'] = self._rng.normal(
-                new_population['trait'], sigma_mut)
+            mu_prob = self._rng.uniform(0, 1, new_population['trait'].size) < self._params['mut_prob']
+            new_population['trait'] = np.where(mu_prob,
+                                               self._rng.normal(new_population['trait'], sigma_mut),
+                                               new_population['trait'])
 
             # disperse offspring within grid bounds
             new_x, new_y = self.mov_within_bounds(new_population['x'],
@@ -636,7 +638,8 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         """
         # Compute local individual environmental field
-        local_env = self._get_local_env_value(env_field, np.column_stack([self._population['x'], self._population['y']]))
+        local_env = self._get_local_env_value(env_field,
+                                              np.column_stack([self._population['x'], self._population['y']]))
         # Compute optimal trait value
         opt_trait = self._optimal_trait_lin(env_field, local_env, slope=self._params['slope_topt_env'])
 
