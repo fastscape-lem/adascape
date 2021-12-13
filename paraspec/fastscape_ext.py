@@ -19,6 +19,8 @@ class Speciation:
         description="random number generator seed",
         static=True
     )
+    rescale_rates = xs.variable(default=True, description="whether to rescale rates", static=True)
+
     env_field = xs.variable(dims=("y", "x"))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
@@ -85,6 +87,7 @@ class IR12Speciation(Speciation):
     sigma_mov = xs.variable(description="controls dispersal magnitude")
     sigma_mut = xs.variable(description="controls mutation magnitude")
     sigma_w = xs.variable(description="scales fitness")
+    mut_prob = xs.variable(description="mutation probability")
 
     size = xs.variable(intent="out", description="population size")
 
@@ -122,9 +125,7 @@ class IR12Speciation(Speciation):
             X, Y,
             self.init_size,
             # TODO: maybe expose kwargs below as process inputs
-            mut_prob=1.,
             lifespan=None,
-            always_direct_parent=False,
             **self._get_model_params()
         )
 
@@ -200,6 +201,7 @@ class DD03Speciation(Speciation):
         self._model = DD03SpeciationModel(
             X, Y,
             self.init_size,
+            lifespan=None,
             **self._get_model_params()
         )
 
@@ -214,7 +216,7 @@ class DD03Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.size = self._model.population_size
-        self._model.update(self.env_field)
+        self._model.update(self.env_field, dt)
 
 
 @xs.process

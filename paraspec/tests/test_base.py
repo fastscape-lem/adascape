@@ -163,20 +163,20 @@ class TestParapatricSpeciationModel(object):
         actual = initialized_model.to_dataframe(varnames=['x', 'y'])
         pd.testing.assert_frame_equal(actual, expected)
 
-    def test_scaled_params(self, model):
-        params = model._get_scaled_params(4)
-        expected = (0.5, 8., 1)
+    #def test_scaled_params(self, model):
+    #    params = model._get_scaled_params(4)
+    #    expected = (0.5, 8., 1)
 
-        assert params == expected
+    #   assert params == expected
 
-    def test_scaled_params_not_effective(self, params, grid):
-        X, Y = grid
-        params.pop('lifespan')
+    #def test_scaled_params_not_effective(self, params, grid):
+    #    X, Y = grid
+    #    params.pop('lifespan')
 
-        model = IR12SpeciationModel(X, Y, 10, **params)
+    #    model = IR12SpeciationModel(X, Y, 10, **params)
 
-        expected = (params['sigma_w'], params['sigma_mov'], params['sigma_mut'])
-        assert model._get_scaled_params(4) == expected
+    #    expected = (params['sigma_w'], params['sigma_mov'], params['sigma_mut'])
+    #    assert model._get_scaled_params(4) == expected
 
     def test_count_neighbors(self, model, grid):
         points = np.column_stack([[0, 4, 8, 12], [0, 2, 4, 6]])

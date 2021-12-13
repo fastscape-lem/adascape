@@ -13,10 +13,12 @@ def ps_process():
         'init_size': 10,
         'nb_radius': 5,
         'car_cap': 10,
+        'mut_prob': 1.0,
         'sigma_w': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'random_seed': 1234,
+        'rescale_rates': True
     }
 
     x = np.linspace(0, 20, 10)
