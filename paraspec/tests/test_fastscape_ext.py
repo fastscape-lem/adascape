@@ -10,6 +10,7 @@ from paraspec.fastscape_ext import (IR12Speciation,
 @pytest.fixture
 def ps_process():
     params = {
+        'slope_trait_env': 0.95,
         'init_size': 10,
         'nb_radius': 5,
         'car_cap': 10,
@@ -25,7 +26,9 @@ def ps_process():
     y = np.linspace(0, 10, 20)
     elev = np.random.uniform(0, 1, (20, 10))
     return IR12Speciation(env_field=elev, grid_x=x, grid_y=y,
-                          init_min_trait=0, init_max_trait=1, **params)
+                          init_min_trait=0, init_max_trait=1,
+                          min_env=0, max_env=1,
+                          **params)
 
 
 def test_parapatric_speciation(ps_process):

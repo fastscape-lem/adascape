@@ -14,6 +14,11 @@ class Speciation:
     init_size = xs.variable(description="initial population size", static=True)
     init_min_trait = xs.variable(description="initial min trait value", static=True)
     init_max_trait = xs.variable(description="initial max trait value", static=True)
+    min_env = xs.variable(description="Minimum value for the environmental field throughout simulation", static=True)
+    max_env = xs.variable(description="Maximum value for the environmental field throughout simulation", static=True)
+    slope_trait_env = xs.variable(default=0.95,
+                                  description="slope of the relationship between optimum trait and environmental field",
+                                  static=True)
     random_seed = xs.variable(
         default=None,
         description="random number generator seed",
@@ -140,7 +145,7 @@ class IR12Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.size = self._model.population_size
-        self._model.evaluate_fitness(self.env_field, dt)
+        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
@@ -170,7 +175,6 @@ class DD03Speciation(Speciation):
     """
     birth_rate = xs.variable(description="birth rate of individuals")
     movement_rate = xs.variable(description="movement/dispersion rate of individuals")
-    slope_topt_env = xs.variable(description="slope of the relationship between optimum trait and environmental field")
     car_cap_max = xs.variable(description="maximum carrying capacity")
     sigma_opt_trait = xs.variable(description="controls strength abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
@@ -184,7 +188,6 @@ class DD03Speciation(Speciation):
         return {
             'birth_rate': self.birth_rate,
             'movement_rate': self.movement_rate,
-            'slope_topt_env': self.slope_topt_env,
             'car_cap_max': self.car_cap_max,
             'sigma_opt_trait': self.sigma_opt_trait,
             'mut_prob': self.mut_prob,
@@ -216,7 +219,7 @@ class DD03Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.size = self._model.population_size
-        self._model.update(self.env_field, dt)
+        self._model.update(self.env_field, self.min_env, self.max_env, dt)
 
 
 @xs.process

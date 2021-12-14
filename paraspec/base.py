@@ -13,7 +13,7 @@ class SpeciationModelBase:
     types of speciation models.
     """
 
-    def __init__(self, grid_x, grid_y, init_pop_size, lifespan=None,
+    def __init__(self, grid_x, grid_y, init_pop_size, slope_trait_env=0.95, lifespan=None,
                  random_seed=None, rescale_rates=True, always_direct_parent=True):
         """
         Initialization of based model.
@@ -26,6 +26,8 @@ class SpeciationModelBase:
             Grid y-coordinates.
         init_pop_size : int
             Total number of individuals generated as the initial population.
+        slope_trait_env : float
+            slope of the relationship between optimum trait and environmental field
         lifespan : float, optional
             Reproductive lifespan of organism. If None (default), the
             lifespan will always match time step length
@@ -60,6 +62,7 @@ class SpeciationModelBase:
         self._truncnorm.random_state = self._rng
 
         self._params = {
+            'slope_trait_env':  slope_trait_env,
             'lifespan': lifespan,
             'random_seed': random_seed,
             'always_direct_parent': always_direct_parent
@@ -253,8 +256,7 @@ class SpeciationModelBase:
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
 
-    @staticmethod
-    def _optimal_trait_lin(env_field, local_env_val, slope=0.95):
+    def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val):
         """
         Normalized optimal trait value as a linear relationship
         with environmental field. Noticed that the local
@@ -264,8 +266,10 @@ class SpeciationModelBase:
 
         Parameters
         ----------
-        env_field : array-like
-            Environmental field defined on the grid.
+        env_field_min : float
+            Minimum value for the environmental field throughout simulation
+        env_field_max : float
+            Maximum value for the environmental field throughout simulation
          local_env_val : array-like
             local environmental field for each individual
         slope : float
@@ -277,8 +281,8 @@ class SpeciationModelBase:
         array-like
             optimal trait values for each individual.
         """
-        norm_loc_env_field = (local_env_val - env_field.min()) / (env_field.max() - env_field.min())
-        opt_trait = ((slope * (norm_loc_env_field - 0.5)) + 0.5)
+        norm_loc_env_field = (local_env_val - env_field_min) / (env_field_max - env_field_min)
+        opt_trait = ((self._params['slope_trait_env'] * (norm_loc_env_field - 0.5)) + 0.5)
         return opt_trait
 
     def _scaled_param(self, param, dt):
@@ -327,8 +331,8 @@ class IR12SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, lifespan=None, random_seed=None, always_direct_parent=True,
-                 nb_radius=500.,  car_cap=1000., sigma_w=500.,
-                 sigma_mov=5., sigma_mut=500., mut_prob=0.05, on_extinction='warn'):
+                 slope_trait_env=0.95, nb_radius=500.,  car_cap=1000., sigma_w=500., sigma_mov=5., sigma_mut=500.,
+                 mut_prob=0.05, on_extinction='warn'):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -354,7 +358,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             doing nothing (no population).
 
         """
-        super().__init__(grid_x, grid_y, init_pop_size, lifespan, random_seed, always_direct_parent)
+        super().__init__(grid_x, grid_y, init_pop_size, slope_trait_env, lifespan, random_seed, always_direct_parent)
 
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -368,15 +372,12 @@ class IR12SpeciationModel(SpeciationModelBase):
         # default parameter values
         self._params.update({
             'nb_radius': nb_radius,
-            'lifespan': lifespan,
             'car_cap': car_cap,
             'sigma_w': sigma_w,
             'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
             'mut_prob': mut_prob,
-            'random_seed': random_seed,
             'on_extinction': on_extinction,
-            'always_direct_parent': always_direct_parent
         })
 
     def _get_n_gen(self, dt):
@@ -419,7 +420,7 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         return np.array([len(nb) for nb in neighbors])
 
-    def evaluate_fitness(self, env_field, dt):
+    def evaluate_fitness(self, env_field, env_field_min, env_field_max, dt):
         """Evaluate fitness and generate offspring number for population and
         with environmental conditions both taken at the current time step.
 
@@ -427,6 +428,10 @@ class IR12SpeciationModel(SpeciationModelBase):
         ----------
         env_field : array-like
             Environmental field defined on the grid.
+        env_field_min : float
+            Minimum value for the environmental field throughout simulation
+        env_field_max : float
+            Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
@@ -441,7 +446,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             r_d = self._params['car_cap'] / self._count_neighbors(pop_points)
 
             local_env = self._get_local_env_value(env_field, pop_points)
-            opt_trait = self._optimal_trait_lin(env_field, local_env)
+            opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env)
             # opt_trait = self._get_local_env_value(env_field, pop_points)
 
             fitness = np.exp(-(self._population['trait'] - opt_trait) ** 2
@@ -565,9 +570,8 @@ class DD03SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_pop_size, lifespan=None, random_seed=None, always_direct_parent=True,
-                 birth_rate=1, movement_rate=5,
-                 slope_topt_env=0.95, car_cap_max=500, sigma_opt_trait=0.3, mut_prob=0.005, sigma_mut=0.05,
-                 sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
+                 slope_trait_env=0.95, birth_rate=1, movement_rate=5, car_cap_max=500, sigma_opt_trait=0.3,
+                 mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
         Initialization of speciation model with competition.
 
@@ -577,8 +581,6 @@ class DD03SpeciationModel(SpeciationModelBase):
             birth rate of individuals
         movement_rate : integer of float
             movement/dispersion rate of individuals
-        slope_topt_env : float
-            slope of the relationship between optimum trait and environmental field
         car_cap_max : integer
             maximum carrying capacity
         sigma_opt_trait : float
@@ -594,12 +596,10 @@ class DD03SpeciationModel(SpeciationModelBase):
         sigma_comp_dist : float
             variability of competition spatial distance between individuals
         """
-        super().__init__(grid_x, grid_y, init_pop_size, lifespan, random_seed, always_direct_parent)
+        super().__init__(grid_x, grid_y, init_pop_size, slope_trait_env, lifespan, random_seed, always_direct_parent)
         self._params.update({
-            'lifespan': lifespan,
             'birth_rate': birth_rate,
             'movement_rate': movement_rate,
-            'slope_topt_env': slope_topt_env,
             'car_cap_max': car_cap_max,
             'sigma_opt_trait': sigma_opt_trait,
             'mut_prob': mut_prob,
@@ -607,7 +607,6 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_mov': sigma_mov,
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
-            'always_direct_parent': always_direct_parent
         })
 
         self.dtf = pd.DataFrame({
@@ -621,7 +620,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'trait': np.array([])
         })
 
-    def update(self, env_field, dt):
+    def update(self, env_field, env_field_min, env_field_max, dt):
         """
         Update of individuals' properties for a given environmental field.
         The computation is based on the Gillespie algorithm for a group
@@ -631,6 +630,10 @@ class DD03SpeciationModel(SpeciationModelBase):
         ----------
         env_field : array-like
             Environmental field defined on the grid.
+        env_field_min : float
+            Minimum value for the environmental field throughout simulation
+        env_field_max : float
+            Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
@@ -655,7 +658,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         local_env = self._get_local_env_value(env_field,
                                               np.column_stack([self._population['x'], self._population['y']]))
         # Compute optimal trait value
-        opt_trait = self._optimal_trait_lin(env_field, local_env, slope=self._params['slope_topt_env'])
+        opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env)
 
         # Compute event probabilities
         birth_i = self._population['trait'].size * [self._params['birth_rate']]
