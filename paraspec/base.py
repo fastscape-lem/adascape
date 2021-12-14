@@ -59,7 +59,11 @@ class SpeciationModelBase:
         self._truncnorm = stats.truncnorm
         self._truncnorm.random_state = self._rng
 
-        self._params = {}
+        self._params = {
+            'lifespan': lifespan,
+            'random_seed': random_seed,
+            'always_direct_parent': always_direct_parent
+        }
         self._env_field_bounds = None
         self._rescale_rates = rescale_rates
         self._set_direct_parent = True
@@ -362,7 +366,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             )
 
         # default parameter values
-        self._params = {
+        self._params.update({
             'nb_radius': nb_radius,
             'lifespan': lifespan,
             'car_cap': car_cap,
@@ -373,7 +377,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'random_seed': random_seed,
             'on_extinction': on_extinction,
             'always_direct_parent': always_direct_parent
-        }
+        })
 
     def _get_n_gen(self, dt):
         """
@@ -591,7 +595,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             variability of competition spatial distance between individuals
         """
         super().__init__(grid_x, grid_y, init_pop_size, lifespan, random_seed, always_direct_parent)
-        self._params = {
+        self._params.update({
             'lifespan': lifespan,
             'birth_rate': birth_rate,
             'movement_rate': movement_rate,
@@ -604,7 +608,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
             'always_direct_parent': always_direct_parent
-        }
+        })
 
         self.dtf = pd.DataFrame({
             'time': np.array([]),
