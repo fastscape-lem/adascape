@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import scipy.spatial as spatial
-from numba import jit
 
 
 class SpeciationModelBase:
@@ -662,14 +661,8 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # Compute event probabilities
         birth_i = self._population['trait'].size * [self._params['birth_rate']]
-        death_i = death_rate(trait=self._population['trait'], x=self._population['x'], y=self._population['y'],
-                             opt_trait=opt_trait,
-                             xmin=self._grid_bounds['x'][0], xmax=self._grid_bounds['x'][1],
-                             ymin=self._grid_bounds['y'][0], ymax=self._grid_bounds['y'][1],
-                             car_cap_max=self._params['car_cap_max'],
-                             sigma_opt_trait=sigma_opt_trait,
-                             sigma_comp_trait=sigma_comp_trait,
-                             sigma_comp_dist=sigma_comp_dist)
+        death_i = self.death_rate(trait=self._population['trait'], x=self._population['x'], y=self._population['y'],
+                                  opt_trait=opt_trait)
         movement_i = self._population['trait'].size * [self._params['movement_rate']]
         events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
         events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._population['trait'].size,
@@ -728,53 +721,32 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._population.update({'step': self._population['step'] + 1})
         self._population.update({'dt': dt})
 
+    def death_rate(self, trait, x, y, opt_trait):
+        """
+        Logistic death rate
 
-@jit(nopython=True)
-def death_rate(trait, x, y, opt_trait, xmin=0.0, xmax=1.0, ymin=0.0, ymax=1.0,
-               car_cap_max=500., sigma_opt_trait=0.3, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
-    """
-    Logistic death rate for DD03 Speciation model
-    implemented using numba
+        Parameters
+        ----------
 
-    Parameters
-    ----------
-
-    trait : 1d array, floats
-        trait value per individual
-    x : 1d array, floats
-        location along the x coord
-    y : 1d array, floats
-        location along the y coord
-    opt_trait : 1d array, floats
-        optimal trait value
-    ymax : value, float
-        maximum value of y coordinate
-    ymin : value, float
-        minimum value of y coordinate
-    xmax : value, float
-        maximum value of y coordinate
-    xmin : value, float
-        minimum value of y coordinate
-    car_cap_max : value, float
-        maximum carrying capacity
-    sigma_opt_trait : value, float
-        variability of trait to abiotic condition
-    sigma_comp_trait : value, float
-        competition variability as a measure of the trait difference between individuals
-    sigma_comp_dist : value, float
-        competition variability as a measure of the spatial distance between individuals
-
-    Returns
-    -------
-    1d array, floats
-        death rate per individual
-    """
-    x = (x - xmin) / (xmax - xmin)
-    y = (y - ymin) / (ymax - ymin)
-    delta_trait = np.expand_dims(trait, 1) - trait
-    delta_xy = np.sqrt((np.expand_dims(x, 1) - x) ** 2 + (np.expand_dims(y, 1) - y) ** 2)
-    delta_trait_norm = np.exp(-0.5 * delta_trait ** 2 / sigma_comp_trait ** 2)
-    delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
-    n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
-    k = car_cap_max * np.exp(-0.5 * (trait - opt_trait) ** 2 / sigma_opt_trait ** 2)
-    return n_eff / k
+        trait : 1d array, floats
+            trait value per individual
+        x : 1d array, floats
+            location along the x coord
+        y : 1d array, floats
+            location along the y coord
+        opt_trait : 1d array, floats
+            optimal trait value
+        Returns
+        -------
+        1d array, floats
+            death rate per individual
+        """
+        x = (x - self._grid_bounds['x'][0]) / (self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
+        y = (y - self._grid_bounds['y'][0]) / (self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
+        delta_trait = np.expand_dims(trait, 1) - trait
+        delta_xy = np.sqrt((np.expand_dims(x, 1) - x) ** 2 + (np.expand_dims(y, 1) - y) ** 2)
+        delta_trait_norm = np.exp(-0.5 * delta_trait ** 2 / self._params['sigma_comp_trait'] ** 2)
+        delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / self._params['sigma_comp_dist'] ** 2)
+        n_eff = 1 / (2 * np.pi * self._params['sigma_comp_dist'] ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
+        k = self._params['car_cap_max'] * np.exp(-0.5 * (trait - opt_trait) ** 2 / self._params['sigma_opt_trait'] ** 2)
+        return n_eff / k
