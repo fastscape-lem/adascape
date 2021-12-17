@@ -1,4 +1,4 @@
-from .base import ParapatricSpeciationModel
+from .base import IR12SpeciationModel
 from .tree import PTreeAccessor as _PTreeAccessor
 
 
