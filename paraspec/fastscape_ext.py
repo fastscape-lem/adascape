@@ -2,36 +2,37 @@ from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
-
-from .base import ParapatricSpeciationModel
+from .base import IR12SpeciationModel
+from .base import DD03SpeciationModel
 
 
 @xs.process
-class ParapatricSpeciation:
-    """Parapatric speciation model as a fastscape extension.
-
-    For more info, see :class:`paraspec.ParapatricSpeciationModel`.
-
+class Speciation:
+    """
+    Speciation model as a fastscape extension
     """
     init_size = xs.variable(description="initial population size", static=True)
+    init_min_trait = xs.variable(description="initial min trait value", static=True)
+    init_max_trait = xs.variable(description="initial max trait value", static=True)
+    min_env = xs.variable(description="Minimum value for the environmental field throughout simulation", static=True)
+    max_env = xs.variable(description="Maximum value for the environmental field throughout simulation", static=True)
+    slope_trait_env = xs.variable(default=0.95,
+                                  description="slope of the relationship between optimum trait and environmental field",
+                                  static=True)
     random_seed = xs.variable(
         default=None,
         description="random number generator seed",
         static=True
     )
-
-    nb_radius = xs.variable(description="fixed neighborhood radius")
-    capacity = xs.variable(description="population capacity within neighborhood")
-    sigma_d = xs.variable(description="controls dispersal magnitude")
-    sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_w = xs.variable(description="scales fitness")
+    rescale_rates = xs.variable(default=True, description="whether to rescale rates", static=True)
 
     env_field = xs.variable(dims=("y", "x"))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
 
-    size = xs.variable(intent="out", description="population size")
+    _model = xs.any_object(description="speciation model instance")
+    _population = xs.any_object(description="speciation model state dictionary")
 
     id = xs.on_demand(
         dims='pop',
@@ -53,6 +54,48 @@ class ParapatricSpeciation:
         dims='pop',
         description="individual's actual trait value"
     )
+
+    @property
+    def population(self):
+        if self._population is None:
+            self._population = self._model.population
+        return self._population
+
+    @id.compute
+    def _get_id(self):
+        return self.population["id"]
+
+    @parent.compute
+    def _get_parent(self):
+        return self.population["parent"]
+
+    @x.compute
+    def _get_x(self):
+        return self.population["x"]
+
+    @y.compute
+    def _get_y(self):
+        return self.population["y"]
+
+    @trait.compute
+    def _get_trait(self):
+        return self.population["trait"]
+
+
+@xs.process
+class IR12Speciation(Speciation):
+    """Irwin (2012) Speciation model as a fastscape extension.
+    For more info, see :class:`paraspec.base.IR12SpeciationModel`.
+    """
+    nb_radius = xs.variable(description="fixed neighborhood radius")
+    car_cap = xs.variable(description="carrying capacity within a neighborhood")
+    sigma_mov = xs.variable(description="controls dispersal magnitude")
+    sigma_mut = xs.variable(description="controls mutation magnitude")
+    sigma_w = xs.variable(description="scales fitness")
+    mut_prob = xs.variable(description="mutation probability")
+
+    size = xs.variable(intent="out", description="population size")
+
     opt_trait = xs.on_demand(
         dims='pop',
         description="individual's optimal trait value"
@@ -73,8 +116,8 @@ class ParapatricSpeciation:
     def _get_model_params(self):
         return {
             "nb_radius": self.nb_radius,
-            "capacity": self.capacity,
-            "sigma_d": self.sigma_d,
+            "car_cap": self.car_cap,
+            "sigma_mov": self.sigma_mov,
             "sigma_mut": self.sigma_mut,
             "sigma_w": self.sigma_w,
             "random_seed": self.random_seed,
@@ -83,17 +126,15 @@ class ParapatricSpeciation:
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
-        self._model = ParapatricSpeciationModel(
+        self._model = IR12SpeciationModel(
             X, Y,
             self.init_size,
             # TODO: maybe expose kwargs below as process inputs
-            m_freq=1.,
             lifespan=None,
-            always_direct_parent=False,
             **self._get_model_params()
         )
 
-        self._model.initialize_population([self.env_field.min(), self.env_field.max()])
+        self._model.initialize([self.init_min_trait, self.init_max_trait])
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -104,42 +145,15 @@ class ParapatricSpeciation:
         self._model.params.update(self._get_model_params())
 
         self.size = self._model.population_size
-        self._model.evaluate_fitness(self.env_field, dt)
+        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
         self._model.update_population(dt)
 
-    @property
-    def population(self):
-        if self._population is None:
-            self._population = self._model.population
-
-        return self._population
-
-    @id.compute
-    def _get_id(self):
-        return self.population["id"]
-
-    @parent.compute
-    def _get_parent(self):
-        return self.population["parent"]
-
-    @x.compute
-    def _get_x(self):
-        return self.population["x"]
-
-    @y.compute
-    def _get_y(self):
-        return self.population["y"]
-
     @opt_trait.compute
     def _get_opt_trait(self):
         return self.population["opt_trait"]
-
-    @trait.compute
-    def _get_trait(self):
-        return self.population["trait"]
 
     @r_d.compute
     def _get_r_d(self):
@@ -155,18 +169,76 @@ class ParapatricSpeciation:
 
 
 @xs.process
-class ParapatricEnvironmentElevation:
-    """Topographic elevation used as the environment field for the parapatric
+class DD03Speciation(Speciation):
+    """Doebeli & Dieckmann (2003) Speciation model as a fastscape extension.
+    For more info, see :class:`paraspec.base.DD03SpeciationModel`.
+    """
+    birth_rate = xs.variable(description="birth rate of individuals")
+    movement_rate = xs.variable(description="movement/dispersion rate of individuals")
+    car_cap_max = xs.variable(description="maximum carrying capacity")
+    sigma_opt_trait = xs.variable(description="controls strength abiotic filtering")
+    mut_prob = xs.variable(description="mutation probability")
+    sigma_mut = xs.variable(description="controls mutation magnitude")
+    sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
+    sigma_comp_trait = xs.variable(description="controls competition strength among individuals based trait")
+    sigma_comp_dist = xs.variable(description="controls competition strength among individuals based distance")
+    size = xs.variable(intent="out", description="abundance of individuals")
+
+    def _get_model_params(self):
+        return {
+            'birth_rate': self.birth_rate,
+            'movement_rate': self.movement_rate,
+            'car_cap_max': self.car_cap_max,
+            'sigma_opt_trait': self.sigma_opt_trait,
+            'mut_prob': self.mut_prob,
+            'sigma_mut': self.sigma_mut,
+            'sigma_mov': self.sigma_mov,
+            'sigma_comp_trait': self.sigma_comp_trait,
+            'sigma_comp_dist': self.sigma_comp_dist,
+            "random_seed": self.random_seed
+        }
+
+    def initialize(self):
+        X, Y = np.meshgrid(self.grid_x, self.grid_y)
+
+        self._model = DD03SpeciationModel(
+            X, Y,
+            self.init_size,
+            lifespan=None,
+            **self._get_model_params()
+        )
+
+        self._model.initialize([self.init_min_trait, self.init_max_trait])
+
+    @xs.runtime(args='step_delta')
+    def run_step(self, dt):
+        # reset population "cache"
+        self._population = None
+
+        # maybe update model parameters
+        self._model.params.update(self._get_model_params())
+
+        self.size = self._model.population_size
+        self._model.update(self.env_field, self.min_env, self.max_env, dt)
+
+
+@xs.process
+class EnvironmentElevation:
+    """Topographic elevation used as the environment field for the
     speciation model.
 
     """
     elevation = xs.foreign(SurfaceTopography, "elevation")
-    env_field = xs.foreign(ParapatricSpeciation, "env_field", intent="out")
+    env_field = xs.foreign(Speciation, "env_field", intent="out")
 
     def initialize(self):
         self.env_field = self.elevation
 
 
-paraspec_model = basic_model.update_processes(
-    {"life": ParapatricSpeciation, "life_env": ParapatricEnvironmentElevation}
+ir12spec_model = basic_model.update_processes(
+    {"life": IR12Speciation, "life_env": EnvironmentElevation}
+)
+
+dd03spec_model = basic_model.update_processes(
+    {"life": DD03Speciation, "life_env": EnvironmentElevation}
 )
