@@ -26,7 +26,7 @@ def ps_process():
     y = np.linspace(0, 10, 20)
     elev = np.random.uniform(0, 1, (20, 10))
     return IR12Speciation(env_field=elev, grid_x=x, grid_y=y,
-                          init_min_trait=0, init_max_trait=1,
+                          init_min_trait=[0], init_max_trait=[1],
                           min_env=0, max_env=1,
                           **params)
 

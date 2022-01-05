@@ -45,7 +45,7 @@ def model(params, grid):
 @pytest.fixture
 def initialized_model(model, env_field):
     m = copy.deepcopy(model)
-    m.initialize([0, 1])
+    m.initialize([[0, 1]])
     return m
 
 
@@ -140,12 +140,12 @@ class TestParapatricSpeciationModel(object):
             expected = "x_range and y_range must be within model bounds"
             with pytest.raises(ValueError, match=expected):
                 model.initialize(
-                    [0, 1], x_range=x_range, y_range=y_range
+                    [[0, 1]], x_range=x_range, y_range=y_range
                 )
 
         else:
             model.initialize(
-                [0, 1], x_range=x_range, y_range=y_range
+                [[0, 1]], x_range=x_range, y_range=y_range
             )
             x_r = x_range or grid[0]
             y_r = y_range or grid[1]
@@ -153,7 +153,11 @@ class TestParapatricSpeciationModel(object):
             assert _in_bounds(np.array(y_r), model.population['y'])
 
     def test_to_dataframe(self, initialized_model):
-        expected = pd.DataFrame(initialized_model.population)
+        individuals_data = initialized_model.population.copy()
+        for i in range(initialized_model.population['trait'].shape[1]):
+            individuals_data['trait_' + str(i)] = individuals_data['trait'][:, i]
+        individuals_data.pop('trait')
+        expected = pd.DataFrame(individuals_data)
         actual = initialized_model.to_dataframe()
         pd.testing.assert_frame_equal(actual, expected)
 
@@ -200,7 +204,7 @@ class TestParapatricSpeciationModel(object):
     def test_evaluate_fitness(self, model, env_field):
         # TODO: more comprehensive testing
 
-        model.initialize([0, 1])
+        model.initialize([[0, 1]])
         model.evaluate_fitness(env_field, 0, 1, 1)
         pop = model.population.copy()
 
@@ -214,7 +218,7 @@ class TestParapatricSpeciationModel(object):
         for i in range(1000):
             model._rng = np.random.default_rng(i)
 
-            model.initialize([0, 1])
+            model.initialize([[0, 1]])
             init_pop = model.population.copy()
             model.evaluate_fitness(env_field, 0, 1, 1)
             model.update_population(1)
@@ -251,7 +255,7 @@ class TestParapatricSpeciationModel(object):
         params['always_direct_parent'] = direct_parent
 
         model = IR12SpeciationModel(X, Y, 10, **params)
-        model.initialize([0, 1])
+        model.initialize([[0, 1]])
 
         model.evaluate_fitness(env_field, 0, 1, 1)
         parents0 = model.to_dataframe(varnames='parent')

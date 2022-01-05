@@ -12,8 +12,8 @@ class Speciation:
     Speciation model as a fastscape extension
     """
     init_size = xs.variable(description="initial population size", static=True)
-    init_min_trait = xs.variable(description="initial min trait value", static=True)
-    init_max_trait = xs.variable(description="initial max trait value", static=True)
+    init_min_trait = xs.variable(dims='trait', description="initial min trait value", static=True)
+    init_max_trait = xs.variable(dims='trait', description="initial max trait value", static=True)
     min_env = xs.variable(description="Minimum value for the environmental field throughout simulation", static=True)
     max_env = xs.variable(description="Maximum value for the environmental field throughout simulation", static=True)
     slope_trait_env = xs.variable(default=0.95,
@@ -51,7 +51,7 @@ class Speciation:
         description="individual's y-position"
     )
     trait = xs.on_demand(
-        dims='pop',
+        dims=('pop', 'trait'),
         description="individual's actual trait value"
     )
 
@@ -110,7 +110,7 @@ class IR12Speciation(Speciation):
     )
     n_offspring = xs.on_demand(
         dims='pop',
-        description="number of offsrping"
+        description="number of offspring"
     )
 
     def _get_model_params(self):
@@ -133,8 +133,8 @@ class IR12Speciation(Speciation):
             lifespan=None,
             **self._get_model_params()
         )
-
-        self._model.initialize([self.init_min_trait, self.init_max_trait])
+        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
+        self._model.initialize(traits_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -180,8 +180,8 @@ class DD03Speciation(Speciation):
     mut_prob = xs.variable(description="mutation probability")
     sigma_mut = xs.variable(description="controls mutation magnitude")
     sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
-    sigma_comp_trait = xs.variable(description="controls competition strength among individuals based trait")
-    sigma_comp_dist = xs.variable(description="controls competition strength among individuals based distance")
+    sigma_comp_trait = xs.variable(description="controls competition strength among individuals and its based on trait")
+    sigma_comp_dist = xs.variable(description="controls competition strength among individuals and its based on distance")
     size = xs.variable(intent="out", description="abundance of individuals")
 
     def _get_model_params(self):
@@ -208,7 +208,7 @@ class DD03Speciation(Speciation):
             **self._get_model_params()
         )
 
-        self._model.initialize([self.init_min_trait, self.init_max_trait])
+        self._model.initialize([[self.init_min_trait, self.init_max_trait]])
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
