@@ -208,7 +208,8 @@ class DD03Speciation(Speciation):
             **self._get_model_params()
         )
 
-        self._model.initialize([[self.init_min_trait, self.init_max_trait]])
+        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
+        self._model.initialize(traits_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):

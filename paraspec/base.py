@@ -704,7 +704,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         offspring['x'] = self._population['x'][events_i == 'B']
         offspring['y'] = self._population['y'][events_i == 'B']
 
-        to_mutate = self._rng.uniform(0, 1, self._population['trait'][events_i == 'B', :].size) < mut_prob
+        to_mutate = self._rng.uniform(0, 1, self._population['trait'][events_i == 'B', :].shape[0]) < mut_prob
         offspring.update({'trait': np.empty([offspring['id'].size, extant['trait'].shape[1]])})
         for i in range(extant['trait'].shape[1]):
             offspring['trait'][:, i] = np.where(to_mutate,
@@ -732,7 +732,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # Update dictionary
         self._population.update({k: np.append(extant[k], offspring[k]) for k in offspring.keys()})
-        self._population['trait'] = np.expand_dims(self._population['trait'], 1)
+        self._population['trait'] = self._population['trait'].reshape([extant['trait'].shape[0]+offspring['trait'].shape[0], extant['trait'].shape[1]])
         # reset the id number for the tree creation
         #self._population['id'] = np.arange(self._population['id'][-1]+1,
         #                                   self._population['id'][-1]+1+self._population['id'].size)
