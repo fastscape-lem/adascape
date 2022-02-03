@@ -112,19 +112,19 @@ class TestParapatricSpeciationModel(object):
         assert model.params == params
 
     def test_initialize_population(self, grid, initialized_model):
-        assert initialized_model.population_size == 10
+        assert initialized_model.abundance == 10
 
-        assert initialized_model.population['step'] == 0
-        np.testing.assert_equal(initialized_model.population['id'],
+        assert initialized_model.individuals['step'] == 0
+        np.testing.assert_equal(initialized_model.individuals['id'],
                                 np.arange(0, 10))
-        np.testing.assert_equal(initialized_model.population['parent'],
+        np.testing.assert_equal(initialized_model.individuals['parent'],
                                 np.arange(0, 10))
 
-        trait = initialized_model.population['trait']
+        trait = initialized_model.individuals['trait']
         assert np.all((trait >= 0) & (trait <= 1))
 
-        assert _in_bounds(grid[0], initialized_model.population['x'])
-        assert _in_bounds(grid[1], initialized_model.population['y'])
+        assert _in_bounds(grid[0], initialized_model.individuals['x'])
+        assert _in_bounds(grid[1], initialized_model.individuals['y'])
 
     @pytest.mark.parametrize("x_range,y_range,error", [
         (None, None, False),
@@ -149,23 +149,23 @@ class TestParapatricSpeciationModel(object):
             )
             x_r = x_range or grid[0]
             y_r = y_range or grid[1]
-            assert _in_bounds(np.array(x_r), model.population['x'])
-            assert _in_bounds(np.array(y_r), model.population['y'])
+            assert _in_bounds(np.array(x_r), model.individuals['x'])
+            assert _in_bounds(np.array(y_r), model.individuals['y'])
 
     def test_to_dataframe(self, initialized_model):
-        individuals_data = initialized_model.population.copy()
-        for i in range(initialized_model.population['trait'].shape[1]):
+        individuals_data = initialized_model.individuals.copy()
+        for i in range(initialized_model.individuals['trait'].shape[1]):
             individuals_data['trait_' + str(i)] = individuals_data['trait'][:, i]
         individuals_data.pop('trait')
         expected = pd.DataFrame(individuals_data)
         actual = initialized_model.to_dataframe()
         pd.testing.assert_frame_equal(actual, expected)
 
-        expected = pd.DataFrame({'x': initialized_model.population['x']})
+        expected = pd.DataFrame({'x': initialized_model.individuals['x']})
         actual = initialized_model.to_dataframe(varnames='x')
         pd.testing.assert_frame_equal(actual, expected)
 
-        data = {k: initialized_model.population[k] for k in ['x', 'y']}
+        data = {k: initialized_model.individuals[k] for k in ['x', 'y']}
         expected = pd.DataFrame(data)
         actual = initialized_model.to_dataframe(varnames=['x', 'y'])
         pd.testing.assert_frame_equal(actual, expected)
@@ -206,12 +206,12 @@ class TestParapatricSpeciationModel(object):
 
         model.initialize([[0, 1]])
         model.evaluate_fitness(env_field, 0, 1, 1)
-        pop = model.population.copy()
+        pop = model.individuals.copy()
 
         for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
             assert k in pop
 
-    def test_update_population(self, model, grid, env_field):
+    def test_update_individuals(self, model, grid, env_field):
         # do many runs to avoid favorable random conditions
         trait_diff = []
 
@@ -219,10 +219,10 @@ class TestParapatricSpeciationModel(object):
             model._rng = np.random.default_rng(i)
 
             model.initialize([[0, 1]])
-            init_pop = model.population.copy()
+            init_pop = model.individuals.copy()
             model.evaluate_fitness(env_field, 0, 1, 1)
-            model.update_population(1)
-            current_pop = model.population.copy()
+            model.update_individuals(1)
+            current_pop = model.individuals.copy()
 
             # test step
             assert current_pop['step'] == 1
@@ -234,8 +234,8 @@ class TestParapatricSpeciationModel(object):
 
             # test mutation
             model.evaluate_fitness(env_field, 0, 1, 1)
-            model.update_population(1)
-            last_pop = model.population.copy()
+            model.update_individuals(1)
+            last_pop = model.individuals.copy()
             idx = np.searchsorted(current_pop['id'], last_pop['parent'])
             trait_diff.append(current_pop['trait'][idx] - last_pop['trait'])
 
@@ -259,18 +259,18 @@ class TestParapatricSpeciationModel(object):
 
         model.evaluate_fitness(env_field, 0, 1, 1)
         parents0 = model.to_dataframe(varnames='parent')
-        model.update_population(1)
+        model.update_individuals(1)
 
         model.evaluate_fitness(env_field, 0, 1, 1)
-        model.update_population(1)
+        model.update_individuals(1)
 
         model.evaluate_fitness(env_field, 0, 1, 1)
         parents2 = model.to_dataframe(varnames='parent')
-        model.update_population(1)
+        model.update_individuals(1)
 
         model.evaluate_fitness(env_field, 0, 1, 1)
         parents3 = model.to_dataframe(varnames='parent')
-        model.update_population(1)
+        model.update_individuals(1)
 
         if direct_parent:
             assert parents2.values.max() > parents0.values.max()
@@ -284,7 +284,7 @@ class TestParapatricSpeciationModel(object):
         (0., 1, 'ignore'),
         #(1., 1e3, 'ignore')
     ])
-    def test_update_population_extinction(self,
+    def test_update_individuals_extinction(self,
                                           initialized_model,
                                           env_field,
                                           car_cap_mul,
@@ -294,7 +294,7 @@ class TestParapatricSpeciationModel(object):
         subset_keys = ('id', 'parent', 'x', 'y', 'trait')
 
         def get_pop_subset():
-            pop = initialized_model.population.copy()
+            pop = initialized_model.individuals.copy()
             return {k: pop[k] for k in subset_keys}
 
         initialized_model._params['on_extinction'] = on_extinction
@@ -306,24 +306,24 @@ class TestParapatricSpeciationModel(object):
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):
                 initialized_model.evaluate_fitness(field, 0, 1, 1)
-                initialized_model.update_population(1)
+                initialized_model.update_individuals(1)
             return
 
         elif on_extinction == 'warn':
             with pytest.warns(RuntimeWarning, match="no offspring"):
                 initialized_model.evaluate_fitness(field, 0, 1, 1)
-                initialized_model.update_population(1)
+                initialized_model.update_individuals(1)
                 current = get_pop_subset()
                 initialized_model.evaluate_fitness(field, 0, 1, 1)
-                initialized_model.update_population(1)
+                initialized_model.update_individuals(1)
                 next = get_pop_subset()
 
         else:
             initialized_model.evaluate_fitness(field, 0, 1, 1)
-            initialized_model.update_population(1)
+            initialized_model.update_individuals(1)
             current = get_pop_subset()
             initialized_model.evaluate_fitness(field, 0, 1, 1)
-            initialized_model.update_population(1)
+            initialized_model.update_individuals(1)
             next = get_pop_subset()
 
         for k in subset_keys:

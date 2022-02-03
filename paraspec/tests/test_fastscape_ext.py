@@ -11,7 +11,7 @@ from paraspec.fastscape_ext import (IR12Speciation,
 def ps_process():
     params = {
         'slope_trait_env': 0.95,
-        'init_size': 10,
+        'init_abundance': 10,
         'nb_radius': 5,
         'car_cap': 10,
         'mut_prob': 1.0,
@@ -35,17 +35,17 @@ def test_parapatric_speciation(ps_process):
     ps_process.initialize()
     ps_process.run_step(1)
 
-    assert ps_process.size == 10
+    assert ps_process.abundance == 10
     np.testing.assert_equal(ps_process._get_id(), np.arange(0, 10))
     np.testing.assert_equal(ps_process._get_parent(), np.arange(0, 10))
 
     for vname in ["x", "y", "trait", "opt_trait", "r_d", "fitness", "n_offspring"]:
         getter = getattr(ps_process, "_get_" + vname)
-        assert getter() is ps_process.population[vname]
+        assert getter() is ps_process.individuals[vname]
 
     ps_process.finalize_step(1)
 
-    assert ps_process.size != len(ps_process.population["id"])
+    assert ps_process.abundance != len(ps_process.individuals["id"])
 
 
 def test_parapatric_environment_elevation():
