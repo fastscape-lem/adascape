@@ -11,13 +11,13 @@ from paraspec import IR12SpeciationModel
 @pytest.fixture
 def params():
     return {
-        'slope_trait_env': 0.95,
+        'slope_trait_env': [0.95],
         'lifespan': 1,
         'random_seed': 1234,
         'always_direct_parent': True,
         'nb_radius': 5,
         'car_cap': 5,
-        'sigma_w': 0.5,
+        'sigma_env_trait': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
@@ -33,7 +33,7 @@ def grid():
 
 @pytest.fixture(scope='session')
 def env_field(grid):
-    return np.random.uniform(0, 1, grid[0].shape)
+    return np.random.uniform(0, 1, np.expand_dims(grid[0], 0).shape)
 
 
 @pytest.fixture
@@ -52,15 +52,15 @@ def initialized_model(model, env_field):
 @pytest.fixture(scope='session')
 def model_repr():
     return dedent("""\
-    <IR12SpeciationModel (population: not initialized)>
+    <IR12SpeciationModel (individuals: not initialized)>
     Parameters:
-        slope_trait_env: 0.95
+        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
         nb_radius: 5
         car_cap: 5
-        sigma_w: 0.5
+        sigma_env_trait: 0.5
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
@@ -71,15 +71,15 @@ def model_repr():
 @pytest.fixture(scope='session')
 def initialized_model_repr():
     return dedent("""\
-    <IR12SpeciationModel (population: 10)>
+    <IR12SpeciationModel (individuals: 10)>
     Parameters:
-        slope_trait_env: 0.95
+        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
         nb_radius: 5
         car_cap: 5
-        sigma_w: 0.5
+        sigma_env_trait: 0.5
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
@@ -182,7 +182,7 @@ class TestParapatricSpeciationModel(object):
 
     #    model = IR12SpeciationModel(X, Y, 10, **params)
 
-    #    expected = (params['sigma_w'], params['sigma_mov'], params['sigma_mut'])
+    #    expected = (params['sigma_env_trait'], params['sigma_mov'], params['sigma_mut'])
     #    assert model._get_scaled_params(4) == expected
 
     def test_count_neighbors(self, model, grid):
@@ -205,10 +205,10 @@ class TestParapatricSpeciationModel(object):
         # TODO: more comprehensive testing
 
         model.initialize([[0, 1]])
-        model.evaluate_fitness(env_field, 0, 1, 1)
+        model.evaluate_fitness(env_field, [0], [1], 1)
         pop = model.individuals.copy()
 
-        for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
+        for k in ['fitness', 'n_offspring']:
             assert k in pop
 
     def test_update_individuals(self, model, grid, env_field):
@@ -220,7 +220,7 @@ class TestParapatricSpeciationModel(object):
 
             model.initialize([[0, 1]])
             init_pop = model.individuals.copy()
-            model.evaluate_fitness(env_field, 0, 1, 1)
+            model.evaluate_fitness(env_field, [0], [1], 1)
             model.update_individuals(1)
             current_pop = model.individuals.copy()
 
@@ -233,7 +233,7 @@ class TestParapatricSpeciationModel(object):
             assert _in_bounds(grid[1], current_pop['y'])
 
             # test mutation
-            model.evaluate_fitness(env_field, 0, 1, 1)
+            model.evaluate_fitness(env_field, [0], [1], 1)
             model.update_individuals(1)
             last_pop = model.individuals.copy()
             idx = np.searchsorted(current_pop['id'], last_pop['parent'])
@@ -245,7 +245,7 @@ class TestParapatricSpeciationModel(object):
         assert pytest.approx(trait_rms, scaled_sigma_mut)
 
         # test reset fitness data
-        for k in ['r_d', 'opt_trait', 'fitness', 'n_offspring']:
+        for k in ['fitness', 'n_offspring']:
             np.testing.assert_array_equal(last_pop[k], np.array([]))
 
     @pytest.mark.parametrize('direct_parent', [True, False])
@@ -257,18 +257,18 @@ class TestParapatricSpeciationModel(object):
         model = IR12SpeciationModel(X, Y, 10, **params)
         model.initialize([[0, 1]])
 
-        model.evaluate_fitness(env_field, 0, 1, 1)
+        model.evaluate_fitness(env_field, [0], [1], 1)
         parents0 = model.to_dataframe(varnames='parent')
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, 0, 1, 1)
+        model.evaluate_fitness(env_field, [0], [1], 1)
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, 0, 1, 1)
+        model.evaluate_fitness(env_field, [0], [1], 1)
         parents2 = model.to_dataframe(varnames='parent')
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, 0, 1, 1)
+        model.evaluate_fitness(env_field, [0], [1], 1)
         parents3 = model.to_dataframe(varnames='parent')
         model.update_individuals(1)
 
@@ -305,24 +305,24 @@ class TestParapatricSpeciationModel(object):
 
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):
-                initialized_model.evaluate_fitness(field, 0, 1, 1)
+                initialized_model.evaluate_fitness(field, [0], [1], 1)
                 initialized_model.update_individuals(1)
             return
 
         elif on_extinction == 'warn':
             with pytest.warns(RuntimeWarning, match="no offspring"):
-                initialized_model.evaluate_fitness(field, 0, 1, 1)
+                initialized_model.evaluate_fitness(field, [0], [1], 1)
                 initialized_model.update_individuals(1)
                 current = get_pop_subset()
-                initialized_model.evaluate_fitness(field, 0, 1, 1)
+                initialized_model.evaluate_fitness(field, [0], [1], 1)
                 initialized_model.update_individuals(1)
                 next = get_pop_subset()
 
         else:
-            initialized_model.evaluate_fitness(field, 0, 1, 1)
+            initialized_model.evaluate_fitness(field, [0], [1], 1)
             initialized_model.update_individuals(1)
             current = get_pop_subset()
-            initialized_model.evaluate_fitness(field, 0, 1, 1)
+            initialized_model.evaluate_fitness(field, [0], [1], 1)
             initialized_model.update_individuals(1)
             next = get_pop_subset()
 

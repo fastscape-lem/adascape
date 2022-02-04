@@ -10,12 +10,12 @@ from paraspec.fastscape_ext import (IR12Speciation,
 @pytest.fixture
 def ps_process():
     params = {
-        'slope_trait_env': 0.95,
+        'slope_trait_env': [0.95],
         'init_abundance': 10,
         'nb_radius': 5,
         'car_cap': 10,
         'mut_prob': 1.0,
-        'sigma_w': 0.5,
+        'sigma_env_trait': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'random_seed': 1234,
@@ -24,10 +24,10 @@ def ps_process():
 
     x = np.linspace(0, 20, 10)
     y = np.linspace(0, 10, 20)
-    elev = np.random.uniform(0, 1, (20, 10))
+    elev = np.random.uniform(0, 1, (1, 20, 10))
     return IR12Speciation(env_field=elev, grid_x=x, grid_y=y,
                           init_min_trait=[0], init_max_trait=[1],
-                          min_env=0, max_env=1,
+                          min_env=[0], max_env=[1],
                           **params)
 
 
@@ -39,7 +39,7 @@ def test_parapatric_speciation(ps_process):
     np.testing.assert_equal(ps_process._get_id(), np.arange(0, 10))
     np.testing.assert_equal(ps_process._get_parent(), np.arange(0, 10))
 
-    for vname in ["x", "y", "trait", "opt_trait", "r_d", "fitness", "n_offspring"]:
+    for vname in ["x", "y", "trait", "fitness", "n_offspring"]:
         getter = getattr(ps_process, "_get_" + vname)
         assert getter() is ps_process.individuals[vname]
 

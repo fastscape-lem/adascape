@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import scipy.spatial as spatial
+import scipy.spatial.distance as dist
 
 
 class SpeciationModelBase:
@@ -12,8 +13,8 @@ class SpeciationModelBase:
     types of speciation models.
     """
 
-    def __init__(self, grid_x, grid_y, init_abundance, slope_trait_env=0.95, lifespan=None,
-                 random_seed=None, rescale_rates=True, always_direct_parent=True):
+    def __init__(self, grid_x, grid_y, init_abundance, slope_trait_env=[0.95], lifespan=None,
+                 random_seed=None, rescale_rates=False, always_direct_parent=True):
         """
         Initialization of based model.
 
@@ -252,7 +253,7 @@ class SpeciationModelBase:
         """
         return self._rng.uniform(values_range[0], values_range[1], self._init_abundance)
 
-    def mov_within_bounds(self, x, y, sigma):
+    def _mov_within_bounds(self, x, y, sigma):
         """
         Move and check if the location of individuals are within grid range.
 
@@ -277,7 +278,7 @@ class SpeciationModelBase:
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
 
-    def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val):
+    def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val, slope):
         """
         Normalized optimal trait value as a linear relationship
         with environmental field. Noticed that the local
@@ -300,7 +301,7 @@ class SpeciationModelBase:
             optimal trait values for each individual.
         """
         norm_loc_env_field = (local_env_val - env_field_min) / (env_field_max - env_field_min)
-        opt_trait = ((self._params['slope_trait_env'] * (norm_loc_env_field - 0.5)) + 0.5)
+        opt_trait = ((slope * (norm_loc_env_field - 0.5)) + 0.5)
         return opt_trait
 
     def _scaled_param(self, param, dt):
@@ -320,7 +321,7 @@ class SpeciationModelBase:
 
     def __repr__(self):
         class_str = type(self).__name__
-        population_str = "population: {}".format(
+        population_str = "individuals: {}".format(
             self.abundance or 'not initialized')
         params_str = "\n".join(["{}: {}".format(k, v)
                                 for k, v in self._params.items()])
@@ -359,7 +360,7 @@ class IR12SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
-                 slope_trait_env=0.95, nb_radius=500., car_cap=1000., sigma_w=500., sigma_mov=5., sigma_mut=500.,
+                 slope_trait_env=[0.95], nb_radius=500., car_cap=1000., sigma_env_trait=500., sigma_mov=5., sigma_mut=500.,
                  mut_prob=0.05, on_extinction='warn'):
         """Initialization of speciation model without competition.
 
@@ -370,7 +371,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             around each individual.
         car_cap: int
             Carrying capacity of group of individuals within the neighborhood area.
-        sigma_w: float
+        sigma_env_trait: float
             Width of fitness curve.
         sigma_mov: float
             Width of dispersal curve.
@@ -401,7 +402,7 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._params.update({
             'nb_radius': nb_radius,
             'car_cap': car_cap,
-            'sigma_w': sigma_w,
+            'sigma_env_trait': sigma_env_trait,
             'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
             'mut_prob': mut_prob,
@@ -456,15 +457,16 @@ class IR12SpeciationModel(SpeciationModelBase):
         ----------
         env_field : array-like
             Environmental field defined on the grid.
-        env_field_min : float
+        env_field_min : list
             Minimum value for the environmental field throughout simulation
-        env_field_max : float
+        env_field_max : list
             Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
         """
         # sigma_w, _, _ = self._get_scaled_params(dt)
+        #TODO: add warning dimensions of trait and env_field should match
 
         if self.abundance:
             pop_points = np.column_stack([self._individuals['x'],
@@ -473,14 +475,24 @@ class IR12SpeciationModel(SpeciationModelBase):
             # compute offspring sizes
             r_d = self._params['car_cap'] / self._count_neighbors(pop_points)
 
-            local_env = self._get_local_env_value(env_field, pop_points)
-            opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env)
+            opt_trait = np.zeros_like(self._individuals['trait'])
+            for i in range(env_field.shape[0]):
+                # Compute local individual environmental field
+                local_env = self._get_local_env_value(env_field[i, :, :],
+                                                      np.column_stack([self._individuals['x'], self._individuals['y']]))
+                # Compute optimal trait value
+                opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
+                                                          self._params['slope_trait_env'][i])
+
+            # local_env = self._get_local_env_value(env_field, pop_points)
+            # opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env,
+            #                                    self._params['slope_trait_env'])
             # opt_trait = self._get_local_env_value(env_field, pop_points)
 
             trait_fitness = []
             for i in range(self._individuals['trait'].shape[1]):
-                delta_trait = self._individuals['trait'][:, i].flatten() - opt_trait
-                trait_fitness.append(np.exp(-delta_trait ** 2 / (2 * self.params['sigma_w'] ** 2)))
+                delta_trait = self._individuals['trait'][:, i].flatten() - opt_trait[:, i]
+                trait_fitness.append(np.exp(-delta_trait ** 2 / (2 * self.params['sigma_env_trait'] ** 2)))
 
             fitness = np.prod(trait_fitness, axis=0)
             n_gen = self._get_n_gen(dt)
@@ -489,14 +501,14 @@ class IR12SpeciationModel(SpeciationModelBase):
             ).astype('int')
 
         else:
-            r_d = np.array([])
-            opt_trait = np.array([])
+            # r_d = np.array([])
+            # opt_trait = np.array([])
             fitness = np.array([])
             n_offspring = np.array([], dtype='int')
 
         self._individuals.update({
-            'r_d': r_d,
-            'opt_trait': opt_trait,
+            # 'r_d': r_d,
+            # 'opt_trait': opt_trait,
             'fitness': fitness,
             'n_offspring': n_offspring
         })
@@ -561,9 +573,9 @@ class IR12SpeciationModel(SpeciationModelBase):
                                                          new_population['trait'][:, i])
 
             # disperse offspring within grid bounds
-            new_x, new_y = self.mov_within_bounds(new_population['x'],
-                                                  new_population['y'],
-                                                  sigma_mov)
+            new_x, new_y = self._mov_within_bounds(new_population['x'],
+                                                   new_population['y'],
+                                                   sigma_mov)
             new_population['x'] = new_x
             new_population['y'] = new_y
 
@@ -573,8 +585,8 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         # reset fitness / offspring data
         self._individuals.update({
-            'r_d': np.array([]),
-            'opt_trait': np.array([]),
+            # 'r_d': np.array([]),
+            # 'opt_trait': np.array([]),
             'fitness': np.array([]),
             'n_offspring': np.array([])
         })
@@ -593,7 +605,7 @@ class DD03SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
-                 slope_trait_env=0.95, birth_rate=1, movement_rate=5, car_cap_max=500, sigma_opt_trait=0.3,
+                 slope_trait_env=[0.95], birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
         Initialization of speciation model with competition.
@@ -606,8 +618,8 @@ class DD03SpeciationModel(SpeciationModelBase):
             movement/dispersion rate of individuals
         car_cap_max : integer
             maximum carrying capacity
-        sigma_opt_trait : float
-            variability of carrying capacity
+        sigma_env_trait : float
+            variability of trait-environment relationship
         mut_prob : float
             mutation probability
         sigma_mut : float
@@ -615,16 +627,16 @@ class DD03SpeciationModel(SpeciationModelBase):
         sigma_mov : float
             variability of movement distance
         sigma_comp_trait : float
-            variability of competition trait distance between individuals
+            competition variability for trait distance between individuals
         sigma_comp_dist : float
-            variability of competition spatial distance between individuals
+            competition variability for spatial distance between individuals
         """
         super().__init__(grid_x, grid_y, init_abundance, slope_trait_env, lifespan, random_seed, always_direct_parent)
         self._params.update({
             'birth_rate': birth_rate,
             'movement_rate': movement_rate,
             'car_cap_max': car_cap_max,
-            'sigma_opt_trait': sigma_opt_trait,
+            'sigma_env_trait': sigma_env_trait,
             'mut_prob': mut_prob,
             'sigma_mut': sigma_mut,
             'sigma_mov': sigma_mov,
@@ -653,34 +665,52 @@ class DD03SpeciationModel(SpeciationModelBase):
         ----------
         env_field : array-like
             Environmental field defined on the grid.
-        env_field_min : float
+        env_field_min : list
             Minimum value for the environmental field throughout simulation
-        env_field_max : float
+        env_field_max : list
             Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
         """
+        #TODO: add warning dimensions of trait and env_field should match
+        if self.abundance:
+            opt_trait = np.zeros_like(self._individuals['trait'])
+            #if self._individuals['trait'].shape[1] == 1:
+            #    # Compute local individual environmental field
+            #    local_env = self._get_local_env_value(env_field[:, :, 0],
+            #                                          np.column_stack([self._individuals['x'], self._individuals['y']]))
+            #    # Compute optimal trait value
+            #    opt_trait[:, 0] = self._optimal_trait_lin(env_field_min[0], env_field_max[0], local_env,
+            #                                              self._params['slope_trait_env'][0])
+            #else:
+            for i in range(env_field.shape[0]):
+                # Compute local individual environmental field
+                local_env = self._get_local_env_value(env_field[i, :, :],
+                                                      np.column_stack(
+                                                          [self._individuals['x'], self._individuals['y']]))
+                # Compute optimal trait value
+                opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
+                                                          self._params['slope_trait_env'][i])
 
-        # Compute local individual environmental field
-        local_env = self._get_local_env_value(env_field,
-                                              np.column_stack([self._individuals['x'], self._individuals['y']]))
-        # Compute optimal trait value
-        opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env)
+            # Compute events probabilities
+            birth_i = self.abundance * [self._params['birth_rate']]
+            death_i = self.death_rate(opt_trait=opt_trait, dt=dt)
+            movement_i = self.abundance * [self._params['movement_rate']]
+            events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
+            events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
+                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
+                                           np.sum(movement_i) / events_tot])
+            # delta_t = self._rng.exponential(1 / events_tot, self._population['id'].size)
 
-        # Compute events probabilities
-        birth_i = self.abundance * [self._params['birth_rate']]
-        death_i = self.death_rate(opt_trait=opt_trait, dt=dt)
-        movement_i = self.abundance * [self._params['movement_rate']]
-        events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
-        events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
-                                    p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
-                                       np.sum(movement_i) / events_tot])
-        # delta_t = self._rng.exponential(1 / events_tot, self._population['id'].size)
-
-        self._individuals.update({'events_i': events_i,
-                                  'death_i': death_i,
-                                  'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
+            self._individuals.update({'events_i': events_i,
+                                      'death_i': death_i,
+                                      'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
+        else:
+            self._individuals.update({'events_i': np.array([]),
+                                      'death_i': np.array([]),
+                                      'n_offspring': np.array([])
+                                      })
 
     def update_individuals(self, dt):
         """
@@ -731,9 +761,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                                                 self._individuals['trait'][events_i == 'B', i])
 
         # Movement
-        new_x, new_y = self.mov_within_bounds(self._individuals['x'][events_i == 'M'],
-                                              self._individuals['y'][events_i == 'M'],
-                                              sigma_mov)
+        new_x, new_y = self._mov_within_bounds(self._individuals['x'][events_i == 'M'],
+                                               self._individuals['y'][events_i == 'M'],
+                                               sigma_mov)
         extant['x'][events_i == 'M'] = new_x
         extant['y'][events_i == 'M'] = new_y
 
@@ -763,7 +793,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         Parameters
         ----------
-        opt_trait : 1d array, floats
+        opt_trait : 2d array, floats
             optimal trait value
         Returns
         -------
@@ -773,37 +803,32 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # rescale parameters
         if self._rescale_rates:
-            sigma_opt_trait = self._scaled_param(self._params['sigma_opt_trait'], dt)
+            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
             sigma_comp_trait = self._scaled_param(self._params['sigma_comp_trait'], dt)
             sigma_comp_dist = self._scaled_param(self._params['sigma_comp_dist'], dt)
         else:
-            sigma_opt_trait = self._params['sigma_opt_trait']
+            sigma_env_trait = self._params['sigma_env_trait']
             sigma_comp_trait = self._params['sigma_comp_trait']
             sigma_comp_dist = self._params['sigma_comp_dist']
 
+        # normalize spatial dimensions
         x = (self._individuals['x'] - self._grid_bounds['x'][0]) / (
-                    self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
+                self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
         y = (self._individuals['y'] - self._grid_bounds['y'][0]) / (
-                    self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
+                self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
 
-        delta_trait = []
-        for i in range(self._individuals['trait'].shape[1]):
-            trait = self._individuals['trait'][:, i]
-            delta_trait.append((np.expand_dims(trait, 1) - trait) ** 2)
-        delta_trait = np.sqrt(np.sum(delta_trait, axis=0))
-        delta_trait_norm = np.exp(-0.5 * delta_trait / sigma_comp_trait ** 2)
-
-        delta_xy = np.sqrt((np.expand_dims(x, 1) - x) ** 2 + (np.expand_dims(y, 1) - y) ** 2)
+        # trait distance among individuals
+        delta_comp_trait = dist.squareform(dist.pdist(self._individuals['trait']))
+        delta_trait_norm = np.exp(-0.5 * delta_comp_trait ** 2 / sigma_comp_trait ** 2)
+        # spatial distance among individuals
+        delta_xy = dist.squareform(dist.pdist(np.column_stack([x, y])))
         delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
+        # average number of individual with similar traits and in proximity to each other
         n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
-
-        trait_fitness = []
-        for i in range(self._individuals['trait'].shape[1]):
-            delta_trait = self._individuals['trait'][:, i].flatten() - opt_trait
-            trait_fitness.append(np.exp(-delta_trait ** 2 / (2 * sigma_opt_trait ** 2)))
-
-        fitness = np.prod(trait_fitness, axis=0)
-
-        k = self._params['car_cap_max'] * fitness
+        # environmental fitness to local environmental fields
+        delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
+        env_fitness = np.prod(delta_env_trait, axis=1)
+        # carrying capacity
+        k = self._params['car_cap_max'] * env_fitness
 
         return n_eff / k
