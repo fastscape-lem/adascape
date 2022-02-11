@@ -465,8 +465,13 @@ class IR12SpeciationModel(SpeciationModelBase):
             Time step duration.
 
         """
-        # sigma_w, _, _ = self._get_scaled_params(dt)
-        #TODO: add warning dimensions of trait and env_field should match
+
+        if not env_field.shape[0] == self._individuals['trait'].shape[1]:
+            raise ValueError("Number of environmental fields and traits "
+                             "should be equal, respectively, on the "
+                             "first and second dimension. "
+                             "Instead got {!r} environmental field(s)"
+                             " and {!r} trait(s)".format(env_field.shape[0], self._individuals['trait'].shape[1]))
 
         if self.abundance:
             pop_points = np.column_stack([self._individuals['x'],
@@ -484,11 +489,6 @@ class IR12SpeciationModel(SpeciationModelBase):
                 opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
                                                           self._params['slope_trait_env'][i])
 
-            # local_env = self._get_local_env_value(env_field, pop_points)
-            # opt_trait = self._optimal_trait_lin(env_field_min, env_field_max, local_env,
-            #                                    self._params['slope_trait_env'])
-            # opt_trait = self._get_local_env_value(env_field, pop_points)
-
             trait_fitness = []
             for i in range(self._individuals['trait'].shape[1]):
                 delta_trait = self._individuals['trait'][:, i].flatten() - opt_trait[:, i]
@@ -501,14 +501,10 @@ class IR12SpeciationModel(SpeciationModelBase):
             ).astype('int')
 
         else:
-            # r_d = np.array([])
-            # opt_trait = np.array([])
             fitness = np.array([])
             n_offspring = np.array([], dtype='int')
 
         self._individuals.update({
-            # 'r_d': r_d,
-            # 'opt_trait': opt_trait,
             'fitness': fitness,
             'n_offspring': n_offspring
         })
@@ -521,7 +517,6 @@ class IR12SpeciationModel(SpeciationModelBase):
         dt : float
             Time step duration.
         """
-        # _, sigma_mov, sigma_mut = self._get_scaled_params(dt)
         if self._rescale_rates:
             mut_prob = self._scaled_param(self._params['mut_prob'], dt)
             sigma_mov = self._scaled_param(self._params['sigma_mov'], dt)
@@ -585,8 +580,6 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         # reset fitness / offspring data
         self._individuals.update({
-            # 'r_d': np.array([]),
-            # 'opt_trait': np.array([]),
             'fitness': np.array([]),
             'n_offspring': np.array([])
         })
@@ -673,17 +666,15 @@ class DD03SpeciationModel(SpeciationModelBase):
             Time step duration.
 
         """
-        #TODO: add warning dimensions of trait and env_field should match
+        if not env_field.shape[0] == self._individuals['trait'].shape[1]:
+            raise ValueError("Number of environmental fields and traits "
+                             "should be equal, respectively, on the "
+                             "first and second dimension. "
+                             "Instead got {!r} environmental field(s)"
+                             " and {!r} trait(s)".format(env_field.shape[0], self._individuals['trait'].shape[1]))
+
         if self.abundance:
             opt_trait = np.zeros_like(self._individuals['trait'])
-            #if self._individuals['trait'].shape[1] == 1:
-            #    # Compute local individual environmental field
-            #    local_env = self._get_local_env_value(env_field[:, :, 0],
-            #                                          np.column_stack([self._individuals['x'], self._individuals['y']]))
-            #    # Compute optimal trait value
-            #    opt_trait[:, 0] = self._optimal_trait_lin(env_field_min[0], env_field_max[0], local_env,
-            #                                              self._params['slope_trait_env'][0])
-            #else:
             for i in range(env_field.shape[0]):
                 # Compute local individual environmental field
                 local_env = self._get_local_env_value(env_field[i, :, :],
@@ -701,8 +692,6 @@ class DD03SpeciationModel(SpeciationModelBase):
             events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
                                         p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
                                            np.sum(movement_i) / events_tot])
-            # delta_t = self._rng.exponential(1 / events_tot, self._population['id'].size)
-
             self._individuals.update({'events_i': events_i,
                                       'death_i': death_i,
                                       'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
