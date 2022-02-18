@@ -496,13 +496,11 @@ class IR12SpeciationModel(SpeciationModelBase):
 
             fitness = np.prod(trait_fitness, axis=0)
             n_gen = self._get_n_gen(dt)
-            n_offspring = np.round(
-                r_d * fitness * np.sqrt(n_gen)
-            ).astype('int')
+            n_offspring = np.round(r_d * fitness * np.sqrt(n_gen)).astype('int')
 
         else:
-            fitness = np.array([])
-            n_offspring = np.array([], dtype='int')
+            fitness = np.zeros(self._individuals['trait'].shape[1])
+            n_offspring = np.zeros(self._individuals['trait'].shape[1])
 
         self._individuals.update({
             'fitness': fitness,
@@ -580,8 +578,8 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         # reset fitness / offspring data
         self._individuals.update({
-            'fitness': np.array([]),
-            'n_offspring': np.array([])
+            'fitness': np.zeros(self._individuals['trait'].shape[1]),
+            'n_offspring': np.zeros(self._individuals['trait'].shape[1])
         })
 
         if not self._params['always_direct_parent']:
@@ -696,9 +694,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                                       'death_i': death_i,
                                       'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
         else:
-            self._individuals.update({'events_i': np.array([]),
-                                      'death_i': np.array([]),
-                                      'n_offspring': np.array([])
+            self._individuals.update({'events_i': np.zeros(self._individuals['trait'].shape[1]),
+                                      'death_i': np.zeros(self._individuals['trait'].shape[1]),
+                                      'n_offspring': np.zeros(self._individuals['trait'].shape[1])
                                       })
 
     def update_individuals(self, dt):
@@ -776,6 +774,11 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._individuals.update({'step': self._individuals['step'] + 1})
         self._individuals.update({'dt': dt})
 
+        # reset offspring data
+        self._individuals.update({
+            'n_offspring': np.zeros(self._individuals['trait'].shape[1])
+        })
+
     def death_rate(self, opt_trait, dt):
         """
         Logistic death rate
@@ -820,4 +823,4 @@ class DD03SpeciationModel(SpeciationModelBase):
         # carrying capacity
         k = self._params['car_cap_max'] * env_fitness
 
-        return n_eff / k
+        return np.sqrt(self._individuals['trait'].shape[1]) * n_eff / k

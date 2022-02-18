@@ -2,8 +2,8 @@ from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
-from .base import IR12SpeciationModel
-from .base import DD03SpeciationModel
+from paraspec.base import IR12SpeciationModel
+from paraspec.base import DD03SpeciationModel
 
 
 @xs.process
@@ -18,8 +18,7 @@ class Speciation:
                           description="Minimum value for the environmental field throughout simulation", static=True)
     max_env = xs.variable(dims='field',
                           description="Maximum value for the environmental field throughout simulation", static=True)
-    slope_trait_env = xs.variable(default=[0.95],
-                                  dims='field',
+    slope_trait_env = xs.variable(dims='field',
                                   description="slope of the linear relationship between "
                                               "optimum trait and environmental field",
                                   static=True)
@@ -30,7 +29,7 @@ class Speciation:
     )
     rescale_rates = xs.variable(default=True, description="whether to rescale rates", static=True)
 
-    env_field = xs.variable(dims=('field', "y", "x"))
+    env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
@@ -57,6 +56,10 @@ class Speciation:
     trait = xs.on_demand(
         dims=('ind', 'trait'),
         description="individual's actual trait value"
+    )
+    n_offspring = xs.on_demand(
+        dims='ind',
+        description="number of offspring"
     )
 
     @property
@@ -85,6 +88,10 @@ class Speciation:
     def _get_trait(self):
         return self.individuals["trait"]
 
+    @n_offspring.compute
+    def _get_n_offspring(self):
+        return self.individuals["n_offspring"]
+
 
 @xs.process
 class IR12Speciation(Speciation):
@@ -104,10 +111,6 @@ class IR12Speciation(Speciation):
         dims='ind',
         description="individual's fitness value"
     )
-    n_offspring = xs.on_demand(
-        dims='ind',
-        description="number of offspring"
-    )
 
     def _get_model_params(self):
         return {
@@ -117,6 +120,7 @@ class IR12Speciation(Speciation):
             "sigma_mut": self.sigma_mut,
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
+            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
@@ -151,10 +155,6 @@ class IR12Speciation(Speciation):
     def _get_fitness(self):
         return self.individuals["fitness"]
 
-    @n_offspring.compute
-    def _get_n_offspring(self):
-        return self.individuals["n_offspring"]
-
 
 @xs.process
 class DD03Speciation(Speciation):
@@ -184,7 +184,8 @@ class DD03Speciation(Speciation):
             'sigma_mov': self.sigma_mov,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed
+            "random_seed": self.random_seed,
+            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
@@ -219,32 +220,46 @@ class DD03Speciation(Speciation):
 @xs.process
 class CompoundEnvironment:
     """Multiple environment fields defined on the same grid.
-
     """
-    field_arrays = xs.group_dict("env_fields")
-    fields = xs.index("fields")
+    field_arrays = xs.group_dict("env_field")
     env_field = xs.foreign(Speciation, "env_field", intent="out")
 
     def initialize(self):
-        self.fields = np.array(self.field_arrays.keys())
-        self.env_field = np.stack(self.field_arrays.values())
+        self.env_field = np.stack(list(self.field_arrays.values()))
 
     def run_step(self):
-        # not sure `np.stack` returns a view,
-        # so we need to do this at every time step
-        self.env_field = np.stack(self.field_arrays.values())
+        self.env_field = np.stack(list(self.field_arrays.values()))
 
 
 @xs.process
-class ElevationEnvField:
+class ElevationEnvField1:
     """Topographic elevation used as one environment field for the
     speciation model.
 
     """
     elevation = xs.foreign(SurfaceTopography, "elevation")
-    field = xs.variable(dims=("y", "x"), intent="out", groups="env_fields")
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
 
     def initialize(self):
+        self.field = self.elevation
+
+    def run_step(self):
+        self.field = self.elevation
+
+
+@xs.process
+class ElevationEnvField2:
+    """Topographic elevation used as one environment field for the
+    speciation model.
+
+    """
+    elevation = xs.foreign(SurfaceTopography, "elevation")
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
+
+    def initialize(self):
+        self.field = self.elevation
+
+    def run_step(self):
         self.field = self.elevation
 
 
