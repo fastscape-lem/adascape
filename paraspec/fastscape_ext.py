@@ -1,5 +1,9 @@
 from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
+# from orographic_precipitation.fastscape_ext import (
+#     OrographicPrecipitation,
+#     OrographicDrainageDischarge
+# )
 import numpy as np
 import xsimlab as xs
 from paraspec.base import IR12SpeciationModel
@@ -62,6 +66,16 @@ class Speciation:
         description="number of offspring"
     )
 
+    taxon_id = xs.on_demand(
+        dims='ind',
+        description="taxon id number"
+    )
+
+    ancestor_id = xs.on_demand(
+        dims='ind',
+        description="ancestor taxa id number"
+    )
+
     @property
     def individuals(self):
         if self._individuals is None:
@@ -92,6 +106,13 @@ class Speciation:
     def _get_n_offspring(self):
         return self.individuals["n_offspring"]
 
+    @taxon_id.compute
+    def _get_taxon_id(self):
+        return self.individuals["taxon_id"]
+
+    @ancestor_id.compute
+    def _get_ancestor_id(self):
+        return self.individuals["ancestor_id"]
 
 @xs.process
 class IR12Speciation(Speciation):

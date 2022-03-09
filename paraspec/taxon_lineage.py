@@ -33,19 +33,19 @@ def taxon_definition(dtf, distance_method='ward', distance_value=0.5):
     dtf_cols.append("taxon_id")
     dtf_cols.append("ancestor_id")
     out_dtf = pd.DataFrame(columns=dtf_cols)
-    col_traits.append('ancestor_id')
-    _clus = fclusterdata(initial_data[["trait_0"]].to_numpy(),
+    _clus = fclusterdata(initial_data[col_traits].to_numpy(),
                          method=distance_method,
                          t=distance_value,
                          criterion='distance')
     out_dtf = out_dtf.append(initial_data.assign(taxon_id=_clus, ancestor_id=0))
+    col_traits.append('ancestor_id')
 
     for i in dtf['time'].unique()[1:].astype(int):
         ancestor_data = out_dtf.groupby('time').get_group(i - 1)
         current_ancestor_id = np.repeat(ancestor_data['taxon_id'], ancestor_data['n_offspring'])
         current_data = dtf.groupby('time').get_group(i)
         current_data = current_data.assign(ancestor_id=current_ancestor_id.values)
-        _clus = fclusterdata(current_data[["trait_0", "ancestor_id"]].to_numpy(),
+        _clus = fclusterdata(current_data[col_traits].to_numpy(),
                              method=distance_method,
                              t=distance_value,
                              criterion='distance')

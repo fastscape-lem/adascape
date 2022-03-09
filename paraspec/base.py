@@ -5,6 +5,7 @@ import pandas as pd
 import scipy.stats as stats
 import scipy.spatial as spatial
 import scipy.spatial.distance as dist
+from scipy.cluster.hierarchy import fclusterdata
 
 
 class SpeciationModelBase:
@@ -14,7 +15,8 @@ class SpeciationModelBase:
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, slope_trait_env=[0.95], lifespan=None,
-                 random_seed=None, rescale_rates=False, always_direct_parent=True):
+                 random_seed=None, rescale_rates=False, always_direct_parent=True,
+                 distance_method='ward', distance_value=0.5):
         """
         Initialization of based model.
 
@@ -65,7 +67,9 @@ class SpeciationModelBase:
             'slope_trait_env': slope_trait_env,
             'lifespan': lifespan,
             'random_seed': random_seed,
-            'always_direct_parent': always_direct_parent
+            'always_direct_parent': always_direct_parent,
+            'distance_method': distance_method,
+            'distance_value': distance_value
         }
         self._env_field_bounds = None
         self._rescale_rates = rescale_rates
@@ -116,6 +120,11 @@ class SpeciationModelBase:
         for i, tg in enumerate(trait_range):
             init_traits[:, i] = self._sample_in_range(tg)
 
+        _clus = fclusterdata(init_traits,
+                             method=self._params['distance_method'],
+                             t=self._params['distance_value'],
+                             criterion='distance')
+
         population = {'step': 0,
                       'time': 0.,
                       'dt': 0.,
@@ -123,8 +132,21 @@ class SpeciationModelBase:
                       'parent': np.arange(0, self._init_abundance),
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
-                      'trait': init_traits}
+                      'trait': init_traits,
+                      'taxon_id': _clus,
+                      'ancestor_id': _clus-1,
+                      'n_offspring': np.zeros(init_traits.shape[0])
+                      }
         self._individuals.update(population)
+
+    def _taxon_definition(self):
+        current_ancestor_id = np.repeat(self._individuals['taxon_id'], self._individuals['n_offspring'].astype('int'))
+        clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
+        _clus = fclusterdata(clus_dat,
+                             method=self._params['distance_method'],
+                             t=self._params['distance_value'],
+                             criterion='distance')
+        return _clus + current_ancestor_id.max(), current_ancestor_id
 
     @property
     def params(self):
@@ -575,11 +597,14 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._individuals['step'] += 1
         self._individuals['time'] += dt
         self._individuals.update(new_population)
+        _taxon_id, _ancestor_id = self._taxon_definition()
+        self._individuals.update({'taxon_id': _taxon_id})
+        self._individuals.update({'ancestor_id': _ancestor_id})
 
         # reset fitness / offspring data
         self._individuals.update({
-            'fitness': np.zeros(self._individuals['trait'].shape[1]),
-            'n_offspring': np.zeros(self._individuals['trait'].shape[1])
+            'fitness': np.zeros(self._individuals['trait'].shape[0]),
+            'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
 
         if not self._params['always_direct_parent']:
@@ -694,9 +719,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                                       'death_i': death_i,
                                       'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
         else:
-            self._individuals.update({'events_i': np.zeros(self._individuals['trait'].shape[1]),
-                                      'death_i': np.zeros(self._individuals['trait'].shape[1]),
-                                      'n_offspring': np.zeros(self._individuals['trait'].shape[1])
+            self._individuals.update({'events_i': np.zeros(self._individuals['trait'].shape[0]),
+                                      'death_i': np.zeros(self._individuals['trait'].shape[0]),
+                                      'n_offspring': np.zeros(self._individuals['trait'].shape[0])
                                       })
 
     def update_individuals(self, dt):
@@ -737,7 +762,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         offspring['parent'] = parents
         offspring['x'] = self._individuals['x'][events_i == 'B']
         offspring['y'] = self._individuals['y'][events_i == 'B']
-        offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
+        #offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
 
         to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
         offspring.update({'trait': np.empty([offspring['id'].size, extant['trait'].shape[1]])})
@@ -773,10 +798,13 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._individuals.update({'time': self._individuals['time'] + dt})
         self._individuals.update({'step': self._individuals['step'] + 1})
         self._individuals.update({'dt': dt})
+        _taxon_id, _ancestor_id = self._taxon_definition()
+        self._individuals.update({'taxon_id': _taxon_id})
+        self._individuals.update({'ancestor_id': _ancestor_id})
 
         # reset offspring data
         self._individuals.update({
-            'n_offspring': np.zeros(self._individuals['trait'].shape[1])
+            'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
 
     def death_rate(self, opt_trait, dt):
@@ -824,3 +852,32 @@ class DD03SpeciationModel(SpeciationModelBase):
         k = self._params['car_cap_max'] * env_fitness
 
         return np.sqrt(self._individuals['trait'].shape[1]) * n_eff / k
+
+
+def run_model(num_gen=2):
+    pop_size = 10
+    length = (250, 250)
+    spacing = (1, 1)
+    X, Y = np.meshgrid(*[np.arange(0, l + s, s) for l, s in zip(length, spacing)])
+    r = np.random.RandomState(0)
+    elevation = X + r.rand(*Y.shape)
+    environment = np.stack([elevation])
+    #if trait_comp:
+    # model = DD03SpeciationModel(X, Y, pop_size, birth_rate=1, movement_rate=5,
+    #                              slope_trait_env= [0.95],
+    #                              car_cap_max=250, sigma_env_trait=0.2,
+    #                              mut_prob=0.05, sigma_mut=0.05, sigma_mov=5, sigma_comp_trait=0.9,
+    #                              sigma_comp_dist=0.1, random_seed=1234)
+    # else:
+    model = IR12SpeciationModel(X, Y, pop_size,nb_radius=50, car_cap=25,
+                                 slope_trait_env = [0.95, -0.95],
+                                 sigma_env_trait=0.2, sigma_mov=5, sigma_mut=0.05,
+                                 mut_prob=0.05, random_seed=1234)
+
+    model.initialize([[0.5, 0.5]])
+    dfs = []
+    for step in range(num_gen):
+        model.evaluate_fitness(environment, [elevation.min()], [elevation.max()], 1)
+        dfs.append(model.to_dataframe())
+        model.update_individuals(1)
+    return pd.concat(dfs).reset_index(drop=True), elevation, X
