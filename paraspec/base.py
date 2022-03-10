@@ -141,9 +141,10 @@ class SpeciationModelBase:
 
     def _taxon_definition(self):
         if self._set_direct_parent:
-            current_ancestor_id = np.repeat(self._individuals['taxon_id'], self._individuals['n_offspring'].astype('int'))
+            new_id_key = 'taxon_id'
         else:
-            current_ancestor_id = np.repeat(self._individuals['ancestor_id'], self._individuals['n_offspring'].astype('int'))
+            new_id_key = 'ancestor_id'
+        current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
         clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
         _clus = fclusterdata(clus_dat,
                              method=self._params['distance_method'],
