@@ -45,10 +45,10 @@ class Speciation:
         dims='ind',
         description="individual's id"
     )
-    parent = xs.on_demand(
-        dims='ind',
-        description="individual's ancestor"
-    )
+    # parent = xs.on_demand(
+    #     dims='ind',
+    #     description="individual's ancestor"
+    # )
     x = xs.on_demand(
         dims='ind',
         description="individual's x-position"
@@ -87,9 +87,9 @@ class Speciation:
     def _get_id(self):
         return self.individuals["id"]
 
-    @parent.compute
-    def _get_parent(self):
-        return self.individuals["parent"]
+    # @parent.compute
+    # def _get_parent(self):
+    #     return self.individuals["parent"]
 
     @x.compute
     def _get_x(self):

@@ -129,7 +129,7 @@ class SpeciationModelBase:
                       'time': 0.,
                       'dt': 0.,
                       'id': np.arange(0, self._init_abundance),
-                      'parent': np.arange(0, self._init_abundance),
+                      # 'parent': np.arange(0, self._init_abundance),
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
@@ -451,6 +451,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'sigma_mut': sigma_mut,
             'mut_prob': mut_prob,
             'on_extinction': on_extinction,
+            'always_direct_parent': always_direct_parent
         })
 
     def _get_n_gen(self, dt):
@@ -582,7 +583,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_population = {k: np.array([])
-                              for k in ('id', 'parent', 'x', 'y', 'trait')}
+                              for k in ('id', 'x', 'y', 'trait')}  # 'parent',
 
         else:
             # generate offspring
@@ -591,12 +592,12 @@ class IR12SpeciationModel(SpeciationModelBase):
             new_population['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
             # set parents either to direct parents or older ancestors
-            if self._set_direct_parent:
-                parents = self._individuals['id']
-            else:
-                parents = self._individuals['parent']
-
-            new_population['parent'] = np.repeat(parents, n_offspring)
+            # if self._set_direct_parent:
+            #     parents = self._individuals['id']
+            # else:
+            #     parents = self._individuals['parent']
+            #
+            # new_population['parent'] = np.repeat(parents, n_offspring)
 
             last_id = self._individuals['id'][-1] + 1
             new_population['id'] = np.arange(
@@ -677,18 +678,19 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_mov': sigma_mov,
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
+            'always_direct_parent': always_direct_parent
         })
 
-        self.dtf = pd.DataFrame({
-            'time': np.array([]),
-            'step': np.array([]),
-            'dt': np.array([]),
-            'id': np.array([]),
-            'parent': np.array([]),
-            'x': np.array([]),
-            'y': np.array([]),
-            'trait': np.array([])
-        })
+        # self.dtf = pd.DataFrame({
+        #     'time': np.array([]),
+        #     'step': np.array([]),
+        #     'dt': np.array([]),
+        #     'id': np.array([]),
+        #     'parent': np.array([]),
+        #     'x': np.array([]),
+        #     'y': np.array([]),
+        #     'trait': np.array([])
+        # })
 
     def evaluate_fitness(self, env_field, env_field_min, env_field_max, dt):
         """
@@ -766,7 +768,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         death_i = self._individuals['death_i']
 
         # initialize temporary dictionaries
-        offspring = {k: np.array([]) for k in ('id', 'parent', 'x', 'y')}
+        offspring = {k: np.array([]) for k in ('id', 'x', 'y')}  # 'parent',
         extant = self._individuals.copy()
 
         # Birth
@@ -774,14 +776,14 @@ class DD03SpeciationModel(SpeciationModelBase):
                                     self._individuals['id'][events_i == 'B'].size + self._individuals['id'].max() + 1)
 
         # set parents either to direct parents or older ancestors
-        if self._set_direct_parent:
-            parents = self._individuals['id'][events_i == 'B']
-        else:
-            parents = self._individuals['parent'][events_i == 'B']
-        offspring['parent'] = parents
+        # if self._set_direct_parent:
+        #     parents = self._individuals['id'][events_i == 'B']
+        # else:
+        #     parents = self._individuals['parent'][events_i == 'B']
+        # offspring['parent'] = parents
         offspring['x'] = self._individuals['x'][events_i == 'B']
         offspring['y'] = self._individuals['y'][events_i == 'B']
-        #offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
+        # offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
 
         to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
         offspring.update({'trait': np.empty([offspring['id'].size, extant['trait'].shape[1]])})
@@ -805,7 +807,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                                                                                                  extant['id'].size),
                                          axis=0))
         extant['id'] = extant['id'][todie_ma]
-        extant['parent'] = extant['parent'][todie_ma]
+        # extant['parent'] = extant['parent'][todie_ma]
         extant['x'] = extant['x'][todie_ma]
         extant['y'] = extant['y'][todie_ma]
         extant['trait'] = extant['trait'][todie_ma, :]
@@ -891,7 +893,8 @@ def run_model(num_gen=2):
     model = IR12SpeciationModel(X, Y, pop_size, nb_radius=50, car_cap=25,
                                  slope_trait_env = [0.95, -0.95],
                                  sigma_env_trait=0.2, sigma_mov=5, sigma_mut=0.05,
-                                 mut_prob=0.05, random_seed=1234)
+                                 mut_prob=0.05, random_seed=1234,
+                                always_direct_parent=False)
 
     model.initialize([[0.5, 0.5]])
     dfs = []
