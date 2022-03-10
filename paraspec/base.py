@@ -345,6 +345,24 @@ class SpeciationModelBase:
 
         return param / np.sqrt(n_gen)
 
+    def _update_individuals(self, dt):
+        """Require implementation in subclasses."""
+        raise NotImplementedError()
+
+    def update_individuals(self, dt):
+        """Update individuals' data (generate, mutate, and disperse).
+
+        Parameters
+        ----------
+        dt : float
+            Time step duration.
+
+        """
+        self._update_individuals(dt)
+
+        if not self._params['always_direct_parent']:
+            self._set_direct_parent = False
+
     def __repr__(self):
         class_str = type(self).__name__
         population_str = "individuals: {}".format(
@@ -533,7 +551,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'n_offspring': n_offspring
         })
 
-    def update_individuals(self, dt):
+    def _update_individuals(self, dt):
         """Update individuals' data (generate, mutate, and disperse).
 
         Parameters
@@ -610,9 +628,6 @@ class IR12SpeciationModel(SpeciationModelBase):
             'fitness': np.zeros(self._individuals['trait'].shape[0]),
             'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
-
-        if not self._params['always_direct_parent']:
-            self._set_direct_parent = False
 
 
 class DD03SpeciationModel(SpeciationModelBase):
@@ -728,7 +743,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                                       'n_offspring': np.zeros(self._individuals['trait'].shape[0])
                                       })
 
-    def update_individuals(self, dt):
+    def _update_individuals(self, dt):
         """
         Update individuals' data (birth, death, and move).
         Parameters
@@ -810,9 +825,6 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._individuals.update({
             'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
-
-        if not self._params['always_direct_parent']:
-            self._set_direct_parent = False
 
     def death_rate(self, opt_trait, dt):
         """
