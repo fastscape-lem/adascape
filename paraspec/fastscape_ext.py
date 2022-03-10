@@ -74,7 +74,7 @@ class Speciation:
     ancestor_id = xs.on_demand(
         dims='ind',
         description="ancestor taxa id number",
-        encoding={'fill_value':-1}
+        encoding={'fill_value': -1}
     )
 
     @property
@@ -115,6 +115,7 @@ class Speciation:
     def _get_ancestor_id(self):
         return self.individuals["ancestor_id"]
 
+
 @xs.process
 class IR12Speciation(Speciation):
     """Irwin (2012) Speciation model as a fastscape extension.
@@ -153,6 +154,7 @@ class IR12Speciation(Speciation):
             self.init_abundance,
             # TODO: maybe expose kwargs below as process inputs
             lifespan=None,
+            always_direct_parent=False,
             **self._get_model_params()
         )
         traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
@@ -217,6 +219,7 @@ class DD03Speciation(Speciation):
             X, Y,
             self.init_abundance,
             lifespan=None,
+            always_direct_parent=False,
             **self._get_model_params()
         )
 
