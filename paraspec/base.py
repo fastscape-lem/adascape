@@ -807,6 +807,9 @@ class DD03SpeciationModel(SpeciationModelBase):
             'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
 
+        if not self._params['always_direct_parent']:
+            self._set_direct_parent = False
+
     def death_rate(self, opt_trait, dt):
         """
         Logistic death rate
@@ -869,7 +872,7 @@ def run_model(num_gen=2):
     #                              mut_prob=0.05, sigma_mut=0.05, sigma_mov=5, sigma_comp_trait=0.9,
     #                              sigma_comp_dist=0.1, random_seed=1234)
     # else:
-    model = IR12SpeciationModel(X, Y, pop_size,nb_radius=50, car_cap=25,
+    model = IR12SpeciationModel(X, Y, pop_size, nb_radius=50, car_cap=25,
                                  slope_trait_env = [0.95, -0.95],
                                  sigma_env_trait=0.2, sigma_mov=5, sigma_mut=0.05,
                                  mut_prob=0.05, random_seed=1234)
