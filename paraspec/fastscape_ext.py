@@ -73,7 +73,8 @@ class Speciation:
 
     ancestor_id = xs.on_demand(
         dims='ind',
-        description="ancestor taxa id number"
+        description="ancestor taxa id number",
+        encoding={'fill_value':-1}
     )
 
     @property
