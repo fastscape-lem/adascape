@@ -128,7 +128,7 @@ class SpeciationModelBase:
         population = {'step': 0,
                       'time': 0.,
                       'dt': 0.,
-                      'id': np.arange(0, self._init_abundance),
+                      'id': np.arange(0, self._init_abundance) + 1,
                       # 'parent': np.arange(0, self._init_abundance),
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
