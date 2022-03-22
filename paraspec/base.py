@@ -873,33 +873,3 @@ class DD03SpeciationModel(SpeciationModelBase):
         k = self._params['car_cap_max'] * env_fitness
 
         return np.sqrt(self._individuals['trait'].shape[1]) * n_eff / k
-
-
-def run_model(num_gen=2):
-    pop_size = 10
-    length = (250, 250)
-    spacing = (1, 1)
-    X, Y = np.meshgrid(*[np.arange(0, l + s, s) for l, s in zip(length, spacing)])
-    r = np.random.RandomState(0)
-    elevation = X + r.rand(*Y.shape)
-    environment = np.stack([elevation])
-    #if trait_comp:
-    # model = DD03SpeciationModel(X, Y, pop_size, birth_rate=1, movement_rate=5,
-    #                              slope_trait_env= [0.95],
-    #                              car_cap_max=250, sigma_env_trait=0.2,
-    #                              mut_prob=0.05, sigma_mut=0.05, sigma_mov=5, sigma_comp_trait=0.9,
-    #                              sigma_comp_dist=0.1, random_seed=1234)
-    # else:
-    model = IR12SpeciationModel(X, Y, pop_size, nb_radius=50, car_cap=25,
-                                 slope_trait_env = [0.95, -0.95],
-                                 sigma_env_trait=0.2, sigma_mov=5, sigma_mut=0.05,
-                                 mut_prob=0.05, random_seed=1234,
-                                always_direct_parent=False)
-
-    model.initialize([[0.5, 0.5]])
-    dfs = []
-    for step in range(num_gen):
-        model.evaluate_fitness(environment, [elevation.min()], [elevation.max()], 1)
-        dfs.append(model.to_dataframe())
-        model.update_individuals(1)
-    return pd.concat(dfs).reset_index(drop=True), elevation, X
