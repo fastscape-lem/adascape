@@ -68,12 +68,12 @@ class PTreeAccessor(object):
                         .mean()
                         .reset_index()
                         )
-        abundace_taxon = (dtf.groupby(['time', 'taxon_id', 'ancestor_id'])
+        abundance_taxon = (dtf.groupby(['time', 'taxon_id', 'ancestor_id'])
                           .size().rename('abundance')
                           .reset_index()
                           )
 
-        dtf_out = pd.merge(traits_taxon, abundace_taxon)
+        dtf_out = pd.merge(traits_taxon, abundance_taxon)
         dtf_out = dtf_out.assign(node_type=self.node_type)
 
         dtf_out['taxon_id'] = dtf_out['taxon_id'].astype(int).astype(str)
