@@ -62,9 +62,9 @@ class PTreeAccessor(object):
         """
 
         dtf = self._df
-        col_traits = dtf.columns[dtf.columns.str.contains('trait_')].to_list()
         traits_taxon = (dtf
-                        .groupby(['time', 'taxon_id', 'ancestor_id'])[col_traits]
+                        .groupby(['time', 'taxon_id', 'ancestor_id'])
+                        .filter(regex='trait_*')
                         .mean()
                         .reset_index()
                         )
