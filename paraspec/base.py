@@ -139,7 +139,18 @@ class SpeciationModelBase:
                       }
         self._individuals.update(population)
 
-    def _taxon_definition(self):
+    def _compute_taxon_ids(self):
+        """
+        Method to define taxa based on individual's traits and their common ancestor
+        using a hierarchical clustering algorithm from scipy.spatial.hierarchy using
+        a distance methods (ward distance by default) and a specific distance value
+        to separate the clusters.
+
+        Returns
+        -------
+        taxon_ids based on the clustering of indiviudals with similar trait values
+        and common ancestry.
+        """
         if self._set_direct_parent:
             new_id_key = 'taxon_id'
         else:
