@@ -50,22 +50,28 @@ class PTreeAccessor(object):
 
         return self._node_type
 
-    def dtf_taxon(self):
+    def extract_taxon_summary(self):
         """
-        Construct a dataframe with information on nodes, leaf, and branch length
-        for each taxon based on the results of Speciation model.
-
+        Construct a dataframe with information on node type and summary
+        statistics for each taxon based on the results of Speciation model.
 
          Returns
         ----------
-            Dataframe with tree data for each taxon over the simulation time.
+            Dataframe with the following columns:
+            A) time of the simlation,
+            B) taxon ids,
+            C) ancestor ids,
+            D) the average trait value for all traits computed
+            during the simulation each as separate column,
+            E) the abundance of individuals for each taxa, and
+            F) the node type.
         """
 
         dtf = self._df
         traits_taxon = (dtf
                         .groupby(['time', 'taxon_id', 'ancestor_id'])
-                        .filter(regex='trait_*')
                         .mean()
+                        .filter(regex='trait_*')
                         .reset_index()
                         )
         abundance_taxon = (dtf.groupby(['time', 'taxon_id', 'ancestor_id'])
@@ -110,7 +116,7 @@ class PTreeAccessor(object):
                                                                          repr(value_par).strip('[]'))
                             )
 
-        dtf = self.dtf_taxon()
+        dtf = self.extract_taxon_summary()
 
         # Construct a list of nodes from dataframe.
         taxon_namespace = dendropy.TaxonNamespace()
