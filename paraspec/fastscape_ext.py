@@ -1,9 +1,5 @@
 from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
-# from orographic_precipitation.fastscape_ext import (
-#     OrographicPrecipitation,
-#     OrographicDrainageDischarge
-# )
 import numpy as np
 import xsimlab as xs
 from paraspec.base import IR12SpeciationModel
@@ -45,10 +41,6 @@ class Speciation:
         dims='ind',
         description="individual's id"
     )
-    # parent = xs.on_demand(
-    #     dims='ind',
-    #     description="individual's ancestor"
-    # )
     x = xs.on_demand(
         dims='ind',
         description="individual's x-position"
@@ -86,10 +78,6 @@ class Speciation:
     @id.compute
     def _get_id(self):
         return self.individuals["id"]
-
-    # @parent.compute
-    # def _get_parent(self):
-    #     return self.individuals["parent"]
 
     @x.compute
     def _get_x(self):

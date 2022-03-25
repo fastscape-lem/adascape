@@ -113,28 +113,24 @@ class SpeciationModelBase:
                              "[[trait1.min, trait1.max], [trait2.min, trait2.max] ... ]. "
                              "Instead got {!r}".format(trait_range))
 
-        # if num_traits == 1:
-        #    init_traits = self._sample_in_range(trait_range)
-        # else:
         init_traits = np.zeros((self._init_abundance, len(trait_range)))
         for i, tg in enumerate(trait_range):
             init_traits[:, i] = self._sample_in_range(tg)
 
         clus = fclusterdata(init_traits,
-                             method=self._params['distance_method'],
-                             t=self._params['distance_value'],
-                             criterion='distance')
+                            method=self._params['distance_method'],
+                            t=self._params['distance_value'],
+                            criterion='distance')
 
         population = {'step': 0,
                       'time': 0.,
                       'dt': 0.,
                       'id': np.arange(0, self._init_abundance) + 1,
-                      # 'parent': np.arange(0, self._init_abundance),
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
                       'taxon_id': clus,
-                      'ancestor_id': clus-1,
+                      'ancestor_id': clus - 1,
                       'n_offspring': np.zeros(init_traits.shape[0])
                       }
         self._individuals.update(population)
@@ -158,9 +154,9 @@ class SpeciationModelBase:
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
         clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
         clus = fclusterdata(clus_dat,
-                             method=self._params['distance_method'],
-                             t=self._params['distance_value'],
-                             criterion='distance')
+                            method=self._params['distance_method'],
+                            t=self._params['distance_value'],
+                            criterion='distance')
         return clus + current_ancestor_id.max(), current_ancestor_id
 
     @property
@@ -415,7 +411,8 @@ class IR12SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
-                 slope_trait_env=[0.95], nb_radius=500., car_cap=1000., sigma_env_trait=500., sigma_mov=5., sigma_mut=500.,
+                 slope_trait_env=[0.95], nb_radius=500., car_cap=1000., sigma_env_trait=500., sigma_mov=5.,
+                 sigma_mut=500.,
                  mut_prob=0.05, on_extinction='warn'):
         """Initialization of speciation model without competition.
 
@@ -602,14 +599,6 @@ class IR12SpeciationModel(SpeciationModelBase):
                               for k in ('x', 'y')}
             new_population['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
-            # set parents either to direct parents or older ancestors
-            # if self._set_direct_parent:
-            #     parents = self._individuals['id']
-            # else:
-            #     parents = self._individuals['parent']
-            #
-            # new_population['parent'] = np.repeat(parents, n_offspring)
-
             last_id = self._individuals['id'][-1] + 1
             new_population['id'] = np.arange(
                 last_id, last_id + n_offspring.sum())
@@ -691,17 +680,6 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_comp_dist': sigma_comp_dist,
             'always_direct_parent': always_direct_parent
         })
-
-        # self.dtf = pd.DataFrame({
-        #     'time': np.array([]),
-        #     'step': np.array([]),
-        #     'dt': np.array([]),
-        #     'id': np.array([]),
-        #     'parent': np.array([]),
-        #     'x': np.array([]),
-        #     'y': np.array([]),
-        #     'trait': np.array([])
-        # })
 
     def evaluate_fitness(self, env_field, env_field_min, env_field_max, dt):
         """
@@ -786,12 +764,6 @@ class DD03SpeciationModel(SpeciationModelBase):
         offspring['id'] = np.arange(self._individuals['id'].max() + 1,
                                     self._individuals['id'][events_i == 'B'].size + self._individuals['id'].max() + 1)
 
-        # set parents either to direct parents or older ancestors
-        # if self._set_direct_parent:
-        #     parents = self._individuals['id'][events_i == 'B']
-        # else:
-        #     parents = self._individuals['parent'][events_i == 'B']
-        # offspring['parent'] = parents
         offspring['x'] = self._individuals['x'][events_i == 'B']
         offspring['y'] = self._individuals['y'][events_i == 'B']
         # offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
@@ -818,7 +790,6 @@ class DD03SpeciationModel(SpeciationModelBase):
                                                                                                  extant['id'].size),
                                          axis=0))
         extant['id'] = extant['id'][todie_ma]
-        # extant['parent'] = extant['parent'][todie_ma]
         extant['x'] = extant['x'][todie_ma]
         extant['y'] = extant['y'][todie_ma]
         extant['trait'] = extant['trait'][todie_ma, :]
