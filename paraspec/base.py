@@ -120,7 +120,7 @@ class SpeciationModelBase:
         for i, tg in enumerate(trait_range):
             init_traits[:, i] = self._sample_in_range(tg)
 
-        _clus = fclusterdata(init_traits,
+        clus = fclusterdata(init_traits,
                              method=self._params['distance_method'],
                              t=self._params['distance_value'],
                              criterion='distance')
@@ -133,8 +133,8 @@ class SpeciationModelBase:
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
-                      'taxon_id': _clus,
-                      'ancestor_id': _clus-1,
+                      'taxon_id': clus,
+                      'ancestor_id': clus-1,
                       'n_offspring': np.zeros(init_traits.shape[0])
                       }
         self._individuals.update(population)
@@ -157,11 +157,11 @@ class SpeciationModelBase:
             new_id_key = 'ancestor_id'
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
         clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
-        _clus = fclusterdata(clus_dat,
+        clus = fclusterdata(clus_dat,
                              method=self._params['distance_method'],
                              t=self._params['distance_value'],
                              criterion='distance')
-        return _clus + current_ancestor_id.max(), current_ancestor_id
+        return clus + current_ancestor_id.max(), current_ancestor_id
 
     @property
     def params(self):
@@ -631,9 +631,9 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._individuals['step'] += 1
         self._individuals['time'] += dt
         self._individuals.update(new_population)
-        _taxon_id, _ancestor_id = self._taxon_definition()
-        self._individuals.update({'taxon_id': _taxon_id})
-        self._individuals.update({'ancestor_id': _ancestor_id})
+        taxon_id, ancestor_id = self._taxon_definition()
+        self._individuals.update({'taxon_id': taxon_id})
+        self._individuals.update({'ancestor_id': ancestor_id})
 
         # reset fitness / offspring data
         self._individuals.update({
@@ -830,9 +830,9 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._individuals.update({'time': self._individuals['time'] + dt})
         self._individuals.update({'step': self._individuals['step'] + 1})
         self._individuals.update({'dt': dt})
-        _taxon_id, _ancestor_id = self._taxon_definition()
-        self._individuals.update({'taxon_id': _taxon_id})
-        self._individuals.update({'ancestor_id': _ancestor_id})
+        taxon_id, ancestor_id = self._taxon_definition()
+        self._individuals.update({'taxon_id': taxon_id})
+        self._individuals.update({'ancestor_id': ancestor_id})
 
         # reset offspring data
         self._individuals.update({
