@@ -125,7 +125,6 @@ class SpeciationModelBase:
         population = {'step': 0,
                       'time': 0.,
                       'dt': 0.,
-                      # 'id': np.arange(0, self._init_abundance) + 1,
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
@@ -196,7 +195,7 @@ class SpeciationModelBase:
         if not self._individuals:
             return None
         else:
-            return self._individuals['trait'].size
+            return self._individuals['trait'][:, 0].size
 
     def to_dataframe(self, varnames=None):
         """Individuals data at the current time step as a
@@ -411,9 +410,9 @@ class IR12SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
+                 distance_method='ward',  distance_value=0.5,
                  slope_trait_env=[0.95], nb_radius=500., car_cap=1000., sigma_env_trait=500., sigma_mov=5.,
-                 sigma_mut=500.,
-                 mut_prob=0.05, on_extinction='warn'):
+                 sigma_mut=500., mut_prob=0.05, on_extinction='warn'):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -439,7 +438,14 @@ class IR12SpeciationModel(SpeciationModelBase):
             doing nothing (no population).
 
         """
-        super().__init__(grid_x, grid_y, init_abundance, slope_trait_env, lifespan, random_seed, always_direct_parent)
+        super().__init__(grid_x=grid_x, grid_y=grid_y,
+                         init_abundance=init_abundance,
+                         slope_trait_env=slope_trait_env,
+                         lifespan=lifespan,
+                         random_seed=random_seed,
+                         always_direct_parent=always_direct_parent,
+                         distance_method=distance_method,
+                         distance_value=distance_value)
 
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -591,17 +597,13 @@ class IR12SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_population = {k: np.array([])
-                              for k in ('x', 'y', 'trait')}  # 'parent','id',
-
+                              for k in ('x', 'y', 'trait')}
+            new_population['trait'] = np.expand_dims(new_population['trait'], 1)
         else:
             # generate offspring
             new_population = {k: np.repeat(self._individuals[k], n_offspring)
                               for k in ('x', 'y')}
             new_population['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
-
-            # last_id = self._individuals['id'][-1] + 1
-            # new_population['id'] = np.arange(
-            #     last_id, last_id + n_offspring.sum())
 
             # mutate offspring
             to_mutate = self._rng.uniform(0, 1, new_population['trait'].shape[0]) < mut_prob
@@ -620,7 +622,10 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._individuals['step'] += 1
         self._individuals['time'] += dt
         self._individuals.update(new_population)
-        taxon_id, ancestor_id = self._compute_taxon_ids()
+        if not n_offspring.sum():
+            taxon_id, ancestor_id = np.array([]), np.array([])
+        else:
+            taxon_id, ancestor_id = self._compute_taxon_ids()
         self._individuals.update({'taxon_id': taxon_id})
         self._individuals.update({'ancestor_id': ancestor_id})
 
@@ -641,6 +646,7 @@ class DD03SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
+                 distance_method='ward', distance_value=0.5,
                  slope_trait_env=[0.95], birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19):
         """
@@ -667,7 +673,16 @@ class DD03SpeciationModel(SpeciationModelBase):
         sigma_comp_dist : float
             competition variability for spatial distance between individuals
         """
-        super().__init__(grid_x, grid_y, init_abundance, slope_trait_env, lifespan, random_seed, always_direct_parent)
+
+        super().__init__(grid_x=grid_x, grid_y=grid_y,
+                         init_abundance=init_abundance,
+                         slope_trait_env=slope_trait_env,
+                         lifespan=lifespan,
+                         random_seed=random_seed,
+                         always_direct_parent=always_direct_parent,
+                         distance_method=distance_method,
+                         distance_value=distance_value)
+
         self._params.update({
             'birth_rate': birth_rate,
             'movement_rate': movement_rate,
@@ -706,33 +721,28 @@ class DD03SpeciationModel(SpeciationModelBase):
                              "Instead got {!r} environmental field(s)"
                              " and {!r} trait(s)".format(env_field.shape[0], self._individuals['trait'].shape[1]))
 
-        if self.abundance:
-            opt_trait = np.zeros_like(self._individuals['trait'])
-            for i in range(env_field.shape[0]):
-                # Compute local individual environmental field
-                local_env = self._get_local_env_value(env_field[i, :, :],
-                                                      np.column_stack(
-                                                          [self._individuals['x'], self._individuals['y']]))
-                # Compute optimal trait value
-                opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
-                                                          self._params['slope_trait_env'][i])
+        opt_trait = np.zeros_like(self._individuals['trait'])
+        for i in range(env_field.shape[0]):
+            # Compute local individual environmental field
+            local_env = self._get_local_env_value(env_field[i, :, :],
+                                                  np.column_stack(
+                                                      [self._individuals['x'], self._individuals['y']]))
+            # Compute optimal trait value
+            opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
+                                                      self._params['slope_trait_env'][i])
 
-            # Compute events probabilities
-            birth_i = self.abundance * [self._params['birth_rate']]
-            death_i = self.death_rate(opt_trait=opt_trait, dt=dt)
-            movement_i = self.abundance * [self._params['movement_rate']]
-            events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
-            events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
-                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
-                                           np.sum(movement_i) / events_tot])
-            self._individuals.update({'events_i': events_i,
-                                      'death_i': death_i,
-                                      'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))})
-        else:
-            self._individuals.update({'events_i': np.zeros(self._individuals['trait'].shape[0]),
-                                      'death_i': np.zeros(self._individuals['trait'].shape[0]),
-                                      'n_offspring': np.zeros(self._individuals['trait'].shape[0])
-                                      })
+        # Compute events probabilities
+        birth_i = self.abundance * [self._params['birth_rate']]
+        death_i = self.death_rate(opt_trait=opt_trait, dt=dt)
+        movement_i = self.abundance * [self._params['movement_rate']]
+        events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
+        events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
+                                    p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
+                                       np.sum(movement_i) / events_tot])
+        self._individuals.update({'events_i': events_i,
+                                  'death_i': death_i,
+                                  'n_offspring': np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))
+                                  })
 
     def _update_individuals(self, dt):
         """
@@ -757,16 +767,12 @@ class DD03SpeciationModel(SpeciationModelBase):
         death_i = self._individuals['death_i']
 
         # initialize temporary dictionaries
-        offspring = {k: np.array([]) for k in ('x', 'y')}  # 'parent', 'id',
+        offspring = {k: np.array([]) for k in ('x', 'y')}
         extant = self._individuals.copy()
 
         # Birth
-        # offspring['id'] = np.arange(self._individuals['id'].max() + 1,
-        #                             self._individuals['id'][events_i == 'B'].size + self._individuals['id'].max() + 1)
-
         offspring['x'] = self._individuals['x'][events_i == 'B']
         offspring['y'] = self._individuals['y'][events_i == 'B']
-        # offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
 
         to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
         offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
@@ -788,7 +794,6 @@ class DD03SpeciationModel(SpeciationModelBase):
         todie = self._rng.choice(ids, size=self._individuals['x'][events_i == 'D'].size,
                                  p=death_i / death_i.sum(), replace=False)
         todie_ma = np.logical_not(np.any(ids == todie.repeat(ids.size).reshape(todie.size, ids.size), axis=0))
-        # extant['id'] = extant['id'][todie_ma]
         extant['x'] = extant['x'][todie_ma]
         extant['y'] = extant['y'][todie_ma]
         extant['trait'] = extant['trait'][todie_ma, :]
