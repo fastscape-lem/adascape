@@ -125,7 +125,7 @@ class SpeciationModelBase:
         population = {'step': 0,
                       'time': 0.,
                       'dt': 0.,
-                      'id': np.arange(0, self._init_abundance) + 1,
+                      # 'id': np.arange(0, self._init_abundance) + 1,
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
@@ -591,7 +591,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_population = {k: np.array([])
-                              for k in ('id', 'x', 'y', 'trait')}  # 'parent',
+                              for k in ('x', 'y', 'trait')}  # 'parent','id',
 
         else:
             # generate offspring
@@ -599,9 +599,9 @@ class IR12SpeciationModel(SpeciationModelBase):
                               for k in ('x', 'y')}
             new_population['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
-            last_id = self._individuals['id'][-1] + 1
-            new_population['id'] = np.arange(
-                last_id, last_id + n_offspring.sum())
+            # last_id = self._individuals['id'][-1] + 1
+            # new_population['id'] = np.arange(
+            #     last_id, last_id + n_offspring.sum())
 
             # mutate offspring
             to_mutate = self._rng.uniform(0, 1, new_population['trait'].shape[0]) < mut_prob
@@ -620,7 +620,7 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._individuals['step'] += 1
         self._individuals['time'] += dt
         self._individuals.update(new_population)
-        taxon_id, ancestor_id = self._taxon_definition()
+        taxon_id, ancestor_id = self._compute_taxon_ids()
         self._individuals.update({'taxon_id': taxon_id})
         self._individuals.update({'ancestor_id': ancestor_id})
 
@@ -757,19 +757,19 @@ class DD03SpeciationModel(SpeciationModelBase):
         death_i = self._individuals['death_i']
 
         # initialize temporary dictionaries
-        offspring = {k: np.array([]) for k in ('id', 'x', 'y')}  # 'parent',
+        offspring = {k: np.array([]) for k in ('x', 'y')}  # 'parent', 'id',
         extant = self._individuals.copy()
 
         # Birth
-        offspring['id'] = np.arange(self._individuals['id'].max() + 1,
-                                    self._individuals['id'][events_i == 'B'].size + self._individuals['id'].max() + 1)
+        # offspring['id'] = np.arange(self._individuals['id'].max() + 1,
+        #                             self._individuals['id'][events_i == 'B'].size + self._individuals['id'].max() + 1)
 
         offspring['x'] = self._individuals['x'][events_i == 'B']
         offspring['y'] = self._individuals['y'][events_i == 'B']
         # offspring['n_offspring'] = np.repeat(0, offspring['id'].size)
 
         to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
-        offspring.update({'trait': np.empty([offspring['id'].size, extant['trait'].shape[1]])})
+        offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
         for i in range(extant['trait'].shape[1]):
             offspring['trait'][:, i] = np.where(to_mutate,
                                                 self._rng.normal(self._individuals['trait'][events_i == 'B', i],
@@ -784,12 +784,11 @@ class DD03SpeciationModel(SpeciationModelBase):
         extant['y'][events_i == 'M'] = new_y
 
         # Death
-        todie = self._rng.choice(extant['id'], size=self._individuals['id'][events_i == 'D'].size,
+        ids = np.arange(extant['x'].size)
+        todie = self._rng.choice(ids, size=self._individuals['x'][events_i == 'D'].size,
                                  p=death_i / death_i.sum(), replace=False)
-        todie_ma = np.logical_not(np.any(extant['id'] == todie.repeat(extant['id'].size).reshape(todie.size,
-                                                                                                 extant['id'].size),
-                                         axis=0))
-        extant['id'] = extant['id'][todie_ma]
+        todie_ma = np.logical_not(np.any(ids == todie.repeat(ids.size).reshape(todie.size, ids.size), axis=0))
+        # extant['id'] = extant['id'][todie_ma]
         extant['x'] = extant['x'][todie_ma]
         extant['y'] = extant['y'][todie_ma]
         extant['trait'] = extant['trait'][todie_ma, :]
@@ -801,7 +800,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         self._individuals.update({'time': self._individuals['time'] + dt})
         self._individuals.update({'step': self._individuals['step'] + 1})
         self._individuals.update({'dt': dt})
-        taxon_id, ancestor_id = self._taxon_definition()
+        taxon_id, ancestor_id = self._compute_taxon_ids()
         self._individuals.update({'taxon_id': taxon_id})
         self._individuals.update({'ancestor_id': ancestor_id})
 

@@ -37,10 +37,6 @@ class Speciation:
     _model = xs.any_object(description="speciation model instance")
     _individuals = xs.any_object(description="speciation model state dictionary")
 
-    id = xs.on_demand(
-        dims='ind',
-        description="individual's id"
-    )
     x = xs.on_demand(
         dims='ind',
         description="individual's x-position"
@@ -74,10 +70,6 @@ class Speciation:
         if self._individuals is None:
             self._individuals = self._model.individuals
         return self._individuals
-
-    @id.compute
-    def _get_id(self):
-        return self.individuals["id"]
 
     @x.compute
     def _get_x(self):
