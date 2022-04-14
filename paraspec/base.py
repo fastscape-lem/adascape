@@ -310,6 +310,24 @@ class SpeciationModelBase:
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
 
+    def _mutate_trait(self, trait, sigma):
+        """
+        Mutate individual trait values within a range between 0 and 1
+
+        Parameters
+        ----------
+        trait: array_like
+               trait values
+        sigma: float
+               trait variability
+        Returns
+        -------
+        array-like
+            Mutate trait values
+        """
+        mut_trait = self._rng.normal(loc=trait, scale=sigma)
+        return np.minimum(1, np.maximum(0, mut_trait))
+
     def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val, slope):
         """
         Normalized optimal trait value as a linear relationship
@@ -609,7 +627,8 @@ class IR12SpeciationModel(SpeciationModelBase):
             to_mutate = self._rng.uniform(0, 1, new_population['trait'].shape[0]) < mut_prob
             for i in range(new_population['trait'].shape[1]):
                 new_population['trait'][:, i] = np.where(to_mutate,
-                                                         self._rng.normal(new_population['trait'][:, i], sigma_mut),
+                                                         self._mutate_trait(new_population['trait'][:, i], sigma_mut),
+                                                         # self._rng.normal(new_population['trait'][:, i], sigma_mut),
                                                          new_population['trait'][:, i])
 
             # disperse offspring within grid bounds
@@ -778,8 +797,8 @@ class DD03SpeciationModel(SpeciationModelBase):
         offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
         for i in range(extant['trait'].shape[1]):
             offspring['trait'][:, i] = np.where(to_mutate,
-                                                self._rng.normal(self._individuals['trait'][events_i == 'B', i],
-                                                                 sigma_mut),
+                                                self._mutate_trait(self._individuals['trait'][events_i == 'B', i], sigma_mut),
+                                                # self._rng.normal(self._individuals['trait'][events_i == 'B', i], sigma_mut),
                                                 self._individuals['trait'][events_i == 'B', i])
 
         # Movement
