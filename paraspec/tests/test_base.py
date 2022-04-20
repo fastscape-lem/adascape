@@ -44,6 +44,8 @@ def params_DD03():
         'car_cap_max': 100,
         'sigma_comp_trait': 0.9,
         'sigma_comp_dist': 0.2,
+        'on_extinction': 'warn'
+
     }
 
 @pytest.fixture(scope='session')
@@ -141,6 +143,7 @@ def model_DD03_repr():
         sigma_mov: 4
         sigma_comp_trait: 0.9
         sigma_comp_dist: 0.2
+        on_extinction: warn
     """)
 
 
@@ -164,6 +167,7 @@ def initialized_model_DD03_repr():
         sigma_mov: 4
         sigma_comp_trait: 0.9
         sigma_comp_dist: 0.2
+        on_extinction: warn
     """)
 
 
