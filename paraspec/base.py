@@ -325,8 +325,9 @@ class SpeciationModelBase:
         array-like
             Mutate trait values
         """
-        mut_trait = self._rng.normal(loc=trait, scale=sigma)
-        return np.minimum(1, np.maximum(0, mut_trait))
+        a, b = (0 - trait) / sigma, (1 - trait) / sigma
+        mut_trait = self._truncnorm.rvs(a, b, loc=trait, scale=sigma)
+        return mut_trait
 
     def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val, slope):
         """
@@ -763,8 +764,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                                                           self._params['slope_trait_env'][i])
 
             # Compute events probabilities
-            birth_i = self.abundance * [self._params['birth_rate']]
-            death_i = self.death_rate(opt_trait=opt_trait, dt=dt)
+            ba, a_plus_b = self.death_rate(opt_trait=opt_trait, dt=dt)
+            birth_i = np.array(self.abundance * [self._params['birth_rate']]) + ba
+            death_i = a_plus_b
             movement_i = self.abundance * [self._params['movement_rate']]
             events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
             events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
@@ -907,12 +909,14 @@ class DD03SpeciationModel(SpeciationModelBase):
         # spatial distance among individuals
         delta_xy = dist.squareform(dist.pdist(np.column_stack([x, y])))
         delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
-        # average number of individual with similar traits and in proximity to each other
-        n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
+        # number of individual with similar traits and in proximity to each other
+        n_eff = np.sum(delta_trait_norm * delta_xy_norm, axis=1)
         # environmental fitness to local environmental fields
         delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
         env_fitness = np.prod(delta_env_trait, axis=1)
-        # carrying capacity
+        # local carrying capacity
         k = self._params['car_cap_max'] * env_fitness
-
-        return np.sqrt(self._individuals['trait'].shape[1]) * n_eff / k
+        # global carrying capacity
+        a = self.abundance/self._params['car_cap_max']
+        b = n_eff / k
+        return b*a, b+a
