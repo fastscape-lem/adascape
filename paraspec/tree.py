@@ -4,7 +4,7 @@ import dendropy
 
 
 @pd.api.extensions.register_dataframe_accessor("ptree")
-class PTreeAccessor(object):
+class PTreeAccessor:
     """Pandas.DataFrame extension for handling tree (and forest) structures.
 
     The tree or forest structure is fully defined by the 'taxon_id' and
@@ -22,12 +22,8 @@ class PTreeAccessor(object):
     def __init__(self, df):
         self._df = df
 
-        # cache for node type (root, leaf, node) and tree id
-        self._node_type = None
-        self._tree_id = None
-
-    @property
-    def node_type(self):
+    @staticmethod
+    def node_type(dtf):
         """
         Construct a pandas.Series with categories for each type of nodes,
         i.e., root, leaf or node to construct a phylogenetic Tree
@@ -37,18 +33,17 @@ class PTreeAccessor(object):
         :class:`pandas.Series` object (categorical variable) with the type of each node
 
         """
-        if self._node_type is None:
-            is_root = self._df.ancestor_id == 0
-            is_node = self._df.taxon_id.isin(self._df.ancestor_id)
 
-            type_values = np.where(is_root,
-                                   'root',
-                                   np.where(is_node, 'node', 'leaf'))
+        is_root = dtf.ancestor_id == 0
+        is_node = dtf.taxon_id.isin(dtf.ancestor_id)
 
-            self._node_type = pd.Series(pd.Categorical(type_values),
-                                        index=self._df.index)
+        type_values = np.where(is_root,
+                               'root',
+                               np.where(is_node, 'node', 'leaf'))
 
-        return self._node_type
+        node_type = pd.Series(pd.Categorical(type_values), index=dtf.index)
+
+        return node_type
 
     def extract_taxon_summary(self):
         """
@@ -58,7 +53,7 @@ class PTreeAccessor(object):
          Returns
         ----------
             Dataframe with the following columns:
-            A) time of the simlation,
+            A) time of the simulation,
             B) taxon ids,
             C) ancestor ids,
             D) the average trait value for all traits computed
@@ -75,12 +70,12 @@ class PTreeAccessor(object):
                         .reset_index()
                         )
         abundance_taxon = (dtf.groupby(['time', 'taxon_id', 'ancestor_id'])
-                          .size().rename('abundance')
-                          .reset_index()
-                          )
+                           .size().rename('abundance')
+                           .reset_index()
+                           )
 
         dtf_out = pd.merge(traits_taxon, abundance_taxon)
-        dtf_out = dtf_out.assign(node_type=self.node_type)
+        dtf_out = dtf_out.assign(node_type=self.node_type(dtf_out))
 
         dtf_out['taxon_id'] = dtf_out['taxon_id'].astype(int).astype(str)
         dtf_out['ancestor_id'] = dtf_out['ancestor_id'].astype(int).astype(str)
@@ -140,12 +135,11 @@ class PTreeAccessor(object):
             # Get edge length.
             edge_length = None
             if branch_lengths is True:
-                if data['node_type'] == 'leaf':
+                if data['node_type'] == 'root':
                     edge_length = 0
-                elif data['node_type'] == 'node':
-                    edge_length = dtf[branch_length_col].max() - data[branch_length_col]
                 else:
-                    edge_length = dtf[branch_length_col].max()
+                    edge_length = data[branch_length_col] - \
+                                  dtf[dtf.taxon_id == str(data.ancestor_id)][branch_length_col].values[0]
 
             # Build a node
             n = dendropy.Node(

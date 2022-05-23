@@ -27,7 +27,7 @@ class Speciation:
         description="random number generator seed",
         static=True
     )
-    rescale_rates = xs.variable(default=True, description="whether to rescale rates", static=True)
+    rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
