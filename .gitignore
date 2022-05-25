@@ -122,3 +122,14 @@ dmypy.json
 # Pyre type checker
 .pyre/
 /paraspec/eval_plots/
+
+# Dask stuff
+/paraspec/dask-worker-space/
+*.lock
+*.dirlock
+
+/.idea/
+.DS_store
+/.idea/*.xml
+/.idea/*.gitignore
+/.idea/*.iml
