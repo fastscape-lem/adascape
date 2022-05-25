@@ -2,8 +2,8 @@ from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
-from .base import IR12SpeciationModel
-from .base import DD03SpeciationModel
+from paraspec.base import IR12SpeciationModel
+from paraspec.base import DD03SpeciationModel
 
 
 @xs.process
@@ -11,75 +11,89 @@ class Speciation:
     """
     Speciation model as a fastscape extension
     """
-    init_size = xs.variable(description="initial population size", static=True)
-    init_min_trait = xs.variable(description="initial min trait value", static=True)
-    init_max_trait = xs.variable(description="initial max trait value", static=True)
-    min_env = xs.variable(description="Minimum value for the environmental field throughout simulation", static=True)
-    max_env = xs.variable(description="Maximum value for the environmental field throughout simulation", static=True)
-    slope_trait_env = xs.variable(default=0.95,
-                                  description="slope of the relationship between optimum trait and environmental field",
+    init_abundance = xs.variable(description="initial number of individuals", static=True)
+    init_min_trait = xs.variable(dims='trait', description="initial min trait value", static=True)
+    init_max_trait = xs.variable(dims='trait', description="initial max trait value", static=True)
+    min_env = xs.variable(dims='field',
+                          description="Minimum value for the environmental field throughout simulation", static=True)
+    max_env = xs.variable(dims='field',
+                          description="Maximum value for the environmental field throughout simulation", static=True)
+    slope_trait_env = xs.variable(dims='field',
+                                  description="slope of the linear relationship between "
+                                              "optimum trait and environmental field",
                                   static=True)
     random_seed = xs.variable(
         default=None,
         description="random number generator seed",
         static=True
     )
-    rescale_rates = xs.variable(default=True, description="whether to rescale rates", static=True)
+    rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
 
-    env_field = xs.variable(dims=("y", "x"))
+    env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
 
     _model = xs.any_object(description="speciation model instance")
-    _population = xs.any_object(description="speciation model state dictionary")
+    _individuals = xs.any_object(description="speciation model state dictionary")
 
-    id = xs.on_demand(
-        dims='pop',
-        description="individual's id"
-    )
-    parent = xs.on_demand(
-        dims='pop',
-        description="individual's ancestor"
-    )
     x = xs.on_demand(
-        dims='pop',
+        dims='ind',
         description="individual's x-position"
     )
     y = xs.on_demand(
-        dims='pop',
+        dims='ind',
         description="individual's y-position"
     )
     trait = xs.on_demand(
-        dims='pop',
+        dims=('ind', 'trait'),
         description="individual's actual trait value"
+    )
+    n_offspring = xs.on_demand(
+        dims='ind',
+        description="number of offspring"
+    )
+
+    taxon_id = xs.on_demand(
+        dims='ind',
+        description="taxon id number"
+    )
+
+    ancestor_id = xs.on_demand(
+        dims='ind',
+        description="ancestor taxa id number",
+        encoding={'fill_value': -1}
     )
 
     @property
-    def population(self):
-        if self._population is None:
-            self._population = self._model.population
-        return self._population
-
-    @id.compute
-    def _get_id(self):
-        return self.population["id"]
-
-    @parent.compute
-    def _get_parent(self):
-        return self.population["parent"]
+    def individuals(self):
+        if self._individuals is None:
+            self._individuals = self._model.individuals
+        return self._individuals
 
     @x.compute
     def _get_x(self):
-        return self.population["x"]
+        return self.individuals["x"]
 
     @y.compute
     def _get_y(self):
-        return self.population["y"]
+        return self.individuals["y"]
 
     @trait.compute
     def _get_trait(self):
-        return self.population["trait"]
+        return self.individuals["trait"]
+
+    @n_offspring.compute
+    def _get_n_offspring(self):
+        return self.individuals["n_offspring"]
+
+    @taxon_id.compute
+    def _get_taxon_id(self):
+        return self.individuals["taxon_id"]
+
+    @ancestor_id.compute
+    def _get_ancestor_id(self):
+        return self.individuals["ancestor_id"]
 
 
 @xs.process
@@ -91,26 +105,14 @@ class IR12Speciation(Speciation):
     car_cap = xs.variable(description="carrying capacity within a neighborhood")
     sigma_mov = xs.variable(description="controls dispersal magnitude")
     sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_w = xs.variable(description="scales fitness")
+    sigma_env_trait = xs.variable(description="controls strength abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
 
-    size = xs.variable(intent="out", description="population size")
+    abundance = xs.variable(intent="out", description="abundance")
 
-    opt_trait = xs.on_demand(
-        dims='pop',
-        description="individual's optimal trait value"
-    )
-    r_d = xs.on_demand(
-        dims='pop',
-        description="individual's r_d value"
-    )
     fitness = xs.on_demand(
-        dims='pop',
+        dims='ind',
         description="individual's fitness value"
-    )
-    n_offspring = xs.on_demand(
-        dims='pop',
-        description="number of offsrping"
     )
 
     def _get_model_params(self):
@@ -119,8 +121,9 @@ class IR12Speciation(Speciation):
             "car_cap": self.car_cap,
             "sigma_mov": self.sigma_mov,
             "sigma_mut": self.sigma_mut,
-            "sigma_w": self.sigma_w,
+            "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
+            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
@@ -128,44 +131,33 @@ class IR12Speciation(Speciation):
 
         self._model = IR12SpeciationModel(
             X, Y,
-            self.init_size,
+            self.init_abundance,
             # TODO: maybe expose kwargs below as process inputs
             lifespan=None,
+            always_direct_parent=False,
             **self._get_model_params()
         )
-
-        self._model.initialize([self.init_min_trait, self.init_max_trait])
+        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
+        self._model.initialize(traits_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
-        # reset population "cache"
-        self._population = None
+        # reset individuals "cache"
+        self._individuals = None
 
         # maybe update model parameters
         self._model.params.update(self._get_model_params())
 
-        self.size = self._model.population_size
+        self.abundance = self._model.abundance
         self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
-        self._model.update_population(dt)
-
-    @opt_trait.compute
-    def _get_opt_trait(self):
-        return self.population["opt_trait"]
-
-    @r_d.compute
-    def _get_r_d(self):
-        return self.population["r_d"]
+        self._model.update_individuals(dt)
 
     @fitness.compute
     def _get_fitness(self):
-        return self.population["fitness"]
-
-    @n_offspring.compute
-    def _get_n_offspring(self):
-        return self.population["n_offspring"]
+        return self.individuals["fitness"]
 
 
 @xs.process
@@ -176,26 +168,28 @@ class DD03Speciation(Speciation):
     birth_rate = xs.variable(description="birth rate of individuals")
     movement_rate = xs.variable(description="movement/dispersion rate of individuals")
     car_cap_max = xs.variable(description="maximum carrying capacity")
-    sigma_opt_trait = xs.variable(description="controls strength abiotic filtering")
+    sigma_env_trait = xs.variable(description="controls strength abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
     sigma_mut = xs.variable(description="controls mutation magnitude")
     sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
-    sigma_comp_trait = xs.variable(description="controls competition strength among individuals based trait")
-    sigma_comp_dist = xs.variable(description="controls competition strength among individuals based distance")
-    size = xs.variable(intent="out", description="abundance of individuals")
+    sigma_comp_trait = xs.variable(description="controls competition strength among individuals and its based on trait")
+    sigma_comp_dist = xs.variable(description="controls competition strength among individuals and its based on "
+                                              "spatial distance")
+    abundance = xs.variable(intent="out", description="abundance of individuals")
 
     def _get_model_params(self):
         return {
             'birth_rate': self.birth_rate,
             'movement_rate': self.movement_rate,
             'car_cap_max': self.car_cap_max,
-            'sigma_opt_trait': self.sigma_opt_trait,
+            'sigma_env_trait': self.sigma_env_trait,
             'mut_prob': self.mut_prob,
             'sigma_mut': self.sigma_mut,
             'sigma_mov': self.sigma_mov,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed
+            "random_seed": self.random_seed,
+            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
@@ -203,42 +197,81 @@ class DD03Speciation(Speciation):
 
         self._model = DD03SpeciationModel(
             X, Y,
-            self.init_size,
+            self.init_abundance,
             lifespan=None,
+            always_direct_parent=False,
             **self._get_model_params()
         )
 
-        self._model.initialize([self.init_min_trait, self.init_max_trait])
+        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
+        self._model.initialize(traits_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
-        # reset population "cache"
-        self._population = None
+        # reset individuals "cache"
+        self._individuals = None
 
         # maybe update model parameters
         self._model.params.update(self._get_model_params())
 
-        self.size = self._model.population_size
-        self._model.update(self.env_field, self.min_env, self.max_env, dt)
+        self.abundance = self._model.abundance
+        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
+
+    @xs.runtime(args='step_delta')
+    def finalize_step(self, dt):
+        self._model.update_individuals(dt)
 
 
 @xs.process
-class EnvironmentElevation:
-    """Topographic elevation used as the environment field for the
+class CompoundEnvironment:
+    """Multiple environment fields defined on the same grid.
+    """
+    field_arrays = xs.group_dict("env_field")
+    env_field = xs.foreign(Speciation, "env_field", intent="out")
+
+    def initialize(self):
+        self.env_field = np.stack(list(self.field_arrays.values()))
+
+    def run_step(self):
+        self.env_field = np.stack(list(self.field_arrays.values()))
+
+
+@xs.process
+class ElevationEnvField1:
+    """Topographic elevation used as one environment field for the
     speciation model.
 
     """
     elevation = xs.foreign(SurfaceTopography, "elevation")
-    env_field = xs.foreign(Speciation, "env_field", intent="out")
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
 
     def initialize(self):
-        self.env_field = self.elevation
+        self.field = self.elevation
+
+    def run_step(self):
+        self.field = self.elevation
+
+
+@xs.process
+class ElevationEnvField2:
+    """Topographic elevation used as one environment field for the
+    speciation model.
+
+    """
+    elevation = xs.foreign(SurfaceTopography, "elevation")
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
+
+    def initialize(self):
+        self.field = self.elevation
+
+    def run_step(self):
+        self.field = self.elevation
 
 
 ir12spec_model = basic_model.update_processes(
-    {"life": IR12Speciation, "life_env": EnvironmentElevation}
+    {"life": IR12Speciation, "life_env": CompoundEnvironment}
 )
 
 dd03spec_model = basic_model.update_processes(
-    {"life": DD03Speciation, "life_env": EnvironmentElevation}
+    {"life": DD03Speciation, "life_env": CompoundEnvironment}
 )
