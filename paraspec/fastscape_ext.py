@@ -11,22 +11,12 @@ class Speciation:
     """
     Speciation model as a fastscape extension
     """
+
+    traits = xs.index("trait")
+    init_trait_funcs = xs.group_dict("init_trait_funcs")
+    opt_trait_funcs = xs.group_dict("opt_trait_funcs")
     init_abundance = xs.variable(description="initial number of individuals", static=True)
-    init_min_trait = xs.variable(dims='trait', description="initial min trait value", static=True)
-    init_max_trait = xs.variable(dims='trait', description="initial max trait value", static=True)
-    min_env = xs.variable(dims='field',
-                          description="Minimum value for the environmental field throughout simulation", static=True)
-    max_env = xs.variable(dims='field',
-                          description="Maximum value for the environmental field throughout simulation", static=True)
-    slope_trait_env = xs.variable(dims='field',
-                                  description="slope of the linear relationship between "
-                                              "optimum trait and environmental field",
-                                  static=True)
-    random_seed = xs.variable(
-        default=None,
-        description="random number generator seed",
-        static=True
-    )
+    random_seed = xs.variable(default=None, description="random number generator seed", static=True)
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
@@ -123,22 +113,19 @@ class IR12Speciation(Speciation):
             "sigma_mut": self.sigma_mut,
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
-            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
         self._model = IR12SpeciationModel(
-            X, Y,
-            self.init_abundance,
+            X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
             # TODO: maybe expose kwargs below as process inputs
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
-        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
-        self._model.initialize(traits_range)
+        self._model.initialize()
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -149,7 +136,7 @@ class IR12Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.abundance = self._model.abundance
-        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
+        self._model.evaluate_fitness(dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
@@ -275,3 +262,132 @@ ir12spec_model = basic_model.update_processes(
 dd03spec_model = basic_model.update_processes(
     {"life": DD03Speciation, "life_env": CompoundEnvironment}
 )
+
+@xs.process
+class TraitBase:
+    """Base class for representing a single trait.
+
+    Do not use this class directly in a xsimlab.Model. Instead,
+    create one subclass of this class for one trait.
+
+    Every subclass must at least provide an implementation for
+    computing optimal trait values.
+
+    For convenience, this class contains a default implementation
+    for computing initial trait values, although it could be
+    overriden in subclasses.
+
+    """
+    random_seed = xs.variable(
+        default=None,
+        description="random number generator seed",
+        static=True
+    )
+    init_trait_min = xs.variable(default=0, description="min initial trait value")
+    init_trait_max = xs.variable(default=1, description="max initial trait value")
+
+    init_trait_func = xs.any_object(
+        description="initialize trait function", groups="init_trait_funcs"
+    )
+    opt_trait_func = xs.any_object(
+        description="optimal trait function", groups="opt_trait_funcs"
+    )
+
+    def _compute_init_trait(self, init_abundance):
+        """Set initial trait values for individuals.
+
+        By default, initial values are randomly generated from
+        a Uniform distribution bounded by
+        `init_value_min` and `init_value_max`.
+
+        It is possible to provide alternative implementation in
+        subclasses, though.
+
+        Parameters
+        ----------
+        init_abundance : int
+            Number of individuals for the initial population.
+
+        Returns
+        -------
+        init_trait_values : array
+            Initial trait value of each individual.
+
+        """
+        return self._rng.uniform(
+            self.init_trait_min, self.init_trait_max, init_abundance
+        )
+
+    def _compute_opt_trait(self, grid_positions):
+        """This is where the computation of the optimal trait
+        must be implemented in subclasses.
+
+        Parameters
+        ----------
+        grid_positions : array-like
+            Positions of individuals aligned on the model grid,
+            which may be used to retrieve local environment values
+            for each individual.
+
+        Returns
+        -------
+        opt_trait : array
+            Optimal trait value for each individual.
+
+        """
+        # must be implemented in subclasses
+        raise NotImplementedError
+
+    def initialize(self):
+        self._rng = np.random.default_rng(self.random_seed)
+        self.init_trait_func = self._compute_init_trait
+        self.opt_trait_func = self._compute_opt_trait
+
+
+@xs.process
+class FastscapeElevationTrait(TraitBase):
+    """Example of a trait that is based on the elevation of the
+    topographic surface simulated by Fastscape.
+
+    This process computes normalized optimal trait values
+    that linearly depend on elevation.
+
+    """
+    topo_elevation = xs.foreign(SurfaceTopography, "elevation")
+
+    lin_slope = xs.variable(
+        description="slope of opt. trait vs. elevation linear relationship"
+    )
+    norm_min = xs.variable(
+        description="min elevation value for normalization"
+    )
+    norm_max = xs.variable(
+        description="max elevation value for normalization"
+    )
+
+    def _compute_opt_trait(self, grid_positions):
+        env_field = self.topo_elevation.ravel()[grid_positions]
+        norm_env_field = (env_field - self.norm_min) / (self.norm_max - self.norm_min)
+        opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
+
+        return opt_trait
+
+
+@xs.process
+class RandomSeedFederation:
+    """One random seed to rule them all!"""
+
+    seed = xs.variable(
+        default=None,
+        description="random number generator seed",
+        static=True
+    )
+
+    speciation_seed = xs.foreign(Speciation,  "random_seed", intent="out")
+    trait_elev_seed = xs.foreign(FastscapeElevationTrait, "random_seed", intent="out")
+    # slope_elev_seed = xs.foreign(FastscapeSlopeTrait, "random_seed", intent="out")
+
+    def initialize(self):
+        self.trait_elev_seed = self.seed
+        self.speciation_seed = self.seed
+        # self.slope_elev_seed = self.seed
