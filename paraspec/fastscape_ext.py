@@ -12,7 +12,6 @@ class Speciation:
     Speciation model as a fastscape extension
     """
 
-    traits = xs.index("trait")
     init_trait_funcs = xs.group_dict("init_trait_funcs")
     opt_trait_funcs = xs.group_dict("opt_trait_funcs")
     init_abundance = xs.variable(description="initial number of individuals", static=True)
@@ -120,7 +119,6 @@ class IR12Speciation(Speciation):
 
         self._model = IR12SpeciationModel(
             X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
-            # TODO: maybe expose kwargs below as process inputs
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
@@ -175,23 +173,20 @@ class DD03Speciation(Speciation):
             'sigma_mov': self.sigma_mov,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed,
-            "slope_trait_env": self.slope_trait_env,
+            "random_seed": self.random_seed
         }
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
         self._model = DD03SpeciationModel(
-            X, Y,
-            self.init_abundance,
+            X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
 
-        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
-        self._model.initialize(traits_range)
+        self._model.initialize()
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -202,7 +197,7 @@ class DD03Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.abundance = self._model.abundance
-        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
+        self._model.evaluate_fitness(dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
@@ -262,6 +257,23 @@ ir12spec_model = basic_model.update_processes(
 dd03spec_model = basic_model.update_processes(
     {"life": DD03Speciation, "life_env": CompoundEnvironment}
 )
+
+
+@xs.process
+class RandomSeedFederation:
+    """One random seed to rule them all!"""
+
+    seed = xs.variable(
+        default=None,
+        description="random number generator seed",
+        static=True
+    )
+
+    the_seed = xs.variable(intent='out', global_name="random_seed")
+
+    def initialize(self):
+        self.the_seed = self.seed
+
 
 @xs.process
 class TraitBase:
@@ -351,9 +363,9 @@ class FastscapeElevationTrait(TraitBase):
 
     This process computes normalized optimal trait values
     that linearly depend on elevation.
-
     """
     topo_elevation = xs.foreign(SurfaceTopography, "elevation")
+    random_seed = xs.foreign(RandomSeedFederation, 'seed', intent='in')
 
     lin_slope = xs.variable(
         description="slope of opt. trait vs. elevation linear relationship"
@@ -371,23 +383,3 @@ class FastscapeElevationTrait(TraitBase):
         opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
 
         return opt_trait
-
-
-@xs.process
-class RandomSeedFederation:
-    """One random seed to rule them all!"""
-
-    seed = xs.variable(
-        default=None,
-        description="random number generator seed",
-        static=True
-    )
-
-    speciation_seed = xs.foreign(Speciation,  "random_seed", intent="out")
-    trait_elev_seed = xs.foreign(FastscapeElevationTrait, "random_seed", intent="out")
-    # slope_elev_seed = xs.foreign(FastscapeSlopeTrait, "random_seed", intent="out")
-
-    def initialize(self):
-        self.trait_elev_seed = self.seed
-        self.speciation_seed = self.seed
-        # self.slope_elev_seed = self.seed
