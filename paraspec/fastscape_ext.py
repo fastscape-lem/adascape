@@ -4,6 +4,7 @@ import numpy as np
 import xsimlab as xs
 from paraspec.base import IR12SpeciationModel
 from paraspec.base import DD03SpeciationModel
+from orographic_precipitation.fastscape_ext import OrographicPrecipitation
 
 
 @xs.process
@@ -260,6 +261,38 @@ dd03spec_model = basic_model.update_processes(
 
 
 @xs.process
+class PrecipitationField1:
+    """
+    Orographic precipitation used as an environmental field
+    for the speciation model.
+    """
+    precip = xs.foreign(OrographicPrecipitation, 'precip_rate')
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
+
+    def initialize(self):
+        self.field = self.precip
+
+    def run_step(self):
+        self.field = self.precip
+
+
+@xs.process
+class PrecipitationField2:
+    """
+    Orographic precipitation used as an environmental field
+    for the speciation model.
+    """
+    precip = xs.foreign(OrographicPrecipitation, 'precip_rate')
+    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
+
+    def initialize(self):
+        self.field = self.precip
+
+    def run_step(self):
+        self.field = self.precip
+
+
+@xs.process
 class RandomSeedFederation:
     """One random seed to rule them all!"""
 
@@ -379,6 +412,35 @@ class FastscapeElevationTrait(TraitBase):
 
     def _compute_opt_trait(self, grid_positions):
         env_field = self.topo_elevation.ravel()[grid_positions]
+        norm_env_field = (env_field - self.norm_min) / (self.norm_max - self.norm_min)
+        opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
+
+        return opt_trait
+
+
+@xs.process
+class FastscapePrecipitationTrait(TraitBase):
+    """Example of a trait that is based on the precipitation over
+    topographic surface simulated by Fastscape.
+
+    This process computes normalized optimal trait values
+    that linearly depend on precipitation.
+    """
+    oro_precipitation = xs.foreign(OrographicPrecipitation, "precip_rate")
+    random_seed = xs.foreign(RandomSeedFederation, 'seed', intent='in')
+
+    lin_slope = xs.variable(
+        description="slope of opt. trait vs. precipitation linear relationship"
+    )
+    norm_min = xs.variable(
+        description="min precipitation value for normalization"
+    )
+    norm_max = xs.variable(
+        description="max precipitation value for normalization"
+    )
+
+    def _compute_opt_trait(self, grid_positions):
+        env_field = self.oro_precipitation.ravel()[grid_positions]
         norm_env_field = (env_field - self.norm_min) / (self.norm_max - self.norm_min)
         opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
 
