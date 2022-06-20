@@ -13,6 +13,7 @@ class Speciation:
     Speciation model as a fastscape extension
     """
 
+    trait = xs.index('trait', description="names of the trait(s)")
     init_trait_funcs = xs.group_dict("init_trait_funcs")
     opt_trait_funcs = xs.group_dict("opt_trait_funcs")
     init_abundance = xs.variable(description="initial number of individuals", static=True)
@@ -35,9 +36,9 @@ class Speciation:
         dims='ind',
         description="individual's y-position"
     )
-    trait = xs.on_demand(
+    traits = xs.on_demand(
         dims=('ind', 'trait'),
-        description="individual's actual trait value"
+        description="individuals'  trait values"
     )
     n_offspring = xs.on_demand(
         dims='ind',
@@ -69,7 +70,7 @@ class Speciation:
     def _get_y(self):
         return self.individuals["y"]
 
-    @trait.compute
+    @traits.compute
     def _get_trait(self):
         return self.individuals["trait"]
 
@@ -117,6 +118,9 @@ class IR12Speciation(Speciation):
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
+
+        trait_names = [k[0] for k in self.init_trait_funcs]
+        self.trait = np.array(trait_names, dtype="S")
 
         self._model = IR12SpeciationModel(
             X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
@@ -179,6 +183,9 @@ class DD03Speciation(Speciation):
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
+
+        trait_names = [k[0] for k in self.init_trait_funcs]
+        self.trait = np.array(trait_names, dtype="S")
 
         self._model = DD03SpeciationModel(
             X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
