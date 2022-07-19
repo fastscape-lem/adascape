@@ -6,8 +6,7 @@ import pytest
 pytest.importorskip("fastscape")  # isort:skip
 
 from paraspec.fastscape_ext import (IR12Speciation, DD03Speciation,
-                                    CompoundEnvironment, ElevationEnvField1, ElevationEnvField2,
-                                    PrecipitationField1, PrecipitationField2,
+                                    CompoundEnvironment, ElevationEnvField, PrecipitationField,
                                     FastscapeElevationTrait, FastscapePrecipitationTrait,
                                     ir12spec_model, dd03spec_model)
 
@@ -121,9 +120,9 @@ def test_parapatric_environment_elevation(field):
     elev = np.random.uniform(0, 1, (1, 20, 10))
 
     if field == 'elev_field01':
-        p = ElevationEnvField1(elevation=elev)
+        p = ElevationEnvField(elevation=elev)
     elif field == 'elev_field02':
-        p = ElevationEnvField2(elevation=elev)
+        p = ElevationEnvField(elevation=elev)
     p.initialize()
 
     assert p.field is p.elevation
@@ -135,9 +134,9 @@ def test_parapatric_environment_precipitation(field):
     precip = np.random.uniform(0, 1, (1, 20, 10))
 
     if field == 'precip_field01':
-        p = PrecipitationField1(precip=precip)
+        p = PrecipitationField(precip=precip)
     elif field == 'precip_field02':
-        p = PrecipitationField2(precip=precip)
+        p = PrecipitationField(precip=precip)
     p.initialize()
 
     assert p.field is p.precip
@@ -147,10 +146,10 @@ def test_parapatric_environment_precipitation(field):
 def test_compound_environment():
     elev = np.random.uniform(0, 1, (1, 20, 10))
     prec = np.random.uniform(0, 1, (1, 20, 10))
-    field01 = ElevationEnvField1(elevation=elev)
-    field02 = ElevationEnvField2(elevation=elev)
-    field03 = PrecipitationField1(precip=prec)
-    field04 = PrecipitationField2(precip=prec)
+    field01 = ElevationEnvField(elevation=elev)
+    field02 = ElevationEnvField(elevation=elev)
+    field03 = PrecipitationField(precip=prec)
+    field04 = PrecipitationField(precip=prec)
     dic_fields = {'elevation01': field01, 'elevation02': field02, 'precip_rate01': field03, 'precip_rate02': field04}
     comp_field = CompoundEnvironment(field_arrays=dic_fields)
     comp_field.initialize()

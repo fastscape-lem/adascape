@@ -4,7 +4,7 @@ import numpy as np
 import xsimlab as xs
 from paraspec.base import IR12SpeciationModel
 from paraspec.base import DD03SpeciationModel
-from orographic_precipitation.fastscape_ext import OrographicPrecipitation
+from orographic_precipitation.fastscape_ext import OrographicPrecipitation, OrographicDrainageDischarge
 
 
 @xs.process
@@ -227,7 +227,7 @@ class CompoundEnvironment:
 
 
 @xs.process
-class ElevationEnvField1:
+class ElevationEnvField:
     """Topographic elevation used as one environment field for the
     speciation model.
 
@@ -243,48 +243,7 @@ class ElevationEnvField1:
 
 
 @xs.process
-class ElevationEnvField2:
-    """Topographic elevation used as one environment field for the
-    speciation model.
-
-    """
-    elevation = xs.foreign(SurfaceTopography, "elevation")
-    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
-
-    def initialize(self):
-        self.field = self.elevation
-
-    def run_step(self):
-        self.field = self.elevation
-
-
-ir12spec_model = basic_model.update_processes(
-    {"life": IR12Speciation, "life_env": CompoundEnvironment}
-)
-
-dd03spec_model = basic_model.update_processes(
-    {"life": DD03Speciation, "life_env": CompoundEnvironment}
-)
-
-
-@xs.process
-class PrecipitationField1:
-    """
-    Orographic precipitation used as an environmental field
-    for the speciation model.
-    """
-    precip = xs.foreign(OrographicPrecipitation, 'precip_rate')
-    field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
-
-    def initialize(self):
-        self.field = self.precip
-
-    def run_step(self):
-        self.field = self.precip
-
-
-@xs.process
-class PrecipitationField2:
+class PrecipitationField:
     """
     Orographic precipitation used as an environmental field
     for the speciation model.
@@ -452,3 +411,29 @@ class FastscapePrecipitationTrait(TraitBase):
         opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
 
         return opt_trait
+
+
+nocomp_adaspec_model = basic_model.update_processes(
+    {'life': IR12Speciation,
+     'trait_elev': FastscapeElevationTrait,
+     'trait_prep': FastscapePrecipitationTrait,
+     'life_env': CompoundEnvironment,
+     'elevation': ElevationEnvField,
+     'precip': PrecipitationField,
+     'random': RandomSeedFederation,
+     'precipitation': OrographicPrecipitation,
+     'drainage': OrographicDrainageDischarge}
+)
+
+wcomp_adaspec_model_model = basic_model.update_processes(
+    {'life': DD03Speciation,
+     'trait_elev': FastscapeElevationTrait,
+     'trait_prep': FastscapePrecipitationTrait,
+     'life_env': CompoundEnvironment,
+     'elevation': ElevationEnvField,
+     'precip': PrecipitationField,
+     'random': RandomSeedFederation,
+     'precipitation': OrographicPrecipitation,
+     'drainage': OrographicDrainageDischarge
+     }
+)
