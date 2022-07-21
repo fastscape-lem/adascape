@@ -4,6 +4,7 @@ import numpy as np
 import xsimlab as xs
 from paraspec.base import IR12SpeciationModel
 from paraspec.base import DD03SpeciationModel
+from orographic_precipitation.fastscape_ext import OrographicPrecipitation, OrographicDrainageDischarge
 
 
 @xs.process
@@ -11,22 +12,12 @@ class Speciation:
     """
     Speciation model as a fastscape extension
     """
+
+    trait = xs.index('trait', description="names of the trait(s)")
+    init_trait_funcs = xs.group_dict("init_trait_funcs")
+    opt_trait_funcs = xs.group_dict("opt_trait_funcs")
     init_abundance = xs.variable(description="initial number of individuals", static=True)
-    init_min_trait = xs.variable(dims='trait', description="initial min trait value", static=True)
-    init_max_trait = xs.variable(dims='trait', description="initial max trait value", static=True)
-    min_env = xs.variable(dims='field',
-                          description="Minimum value for the environmental field throughout simulation", static=True)
-    max_env = xs.variable(dims='field',
-                          description="Maximum value for the environmental field throughout simulation", static=True)
-    slope_trait_env = xs.variable(dims='field',
-                                  description="slope of the linear relationship between "
-                                              "optimum trait and environmental field",
-                                  static=True)
-    random_seed = xs.variable(
-        default=None,
-        description="random number generator seed",
-        static=True
-    )
+    random_seed = xs.variable(default=None, description="random number generator seed", static=True)
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
@@ -45,9 +36,9 @@ class Speciation:
         dims='ind',
         description="individual's y-position"
     )
-    trait = xs.on_demand(
+    traits = xs.on_demand(
         dims=('ind', 'trait'),
-        description="individual's actual trait value"
+        description="individuals'  trait values"
     )
     n_offspring = xs.on_demand(
         dims='ind',
@@ -79,7 +70,7 @@ class Speciation:
     def _get_y(self):
         return self.individuals["y"]
 
-    @trait.compute
+    @traits.compute
     def _get_trait(self):
         return self.individuals["trait"]
 
@@ -123,22 +114,21 @@ class IR12Speciation(Speciation):
             "sigma_mut": self.sigma_mut,
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
-            "slope_trait_env": self.slope_trait_env,
         }
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
+        trait_names = [k[0] for k in self.init_trait_funcs]
+        self.trait = np.array(trait_names, dtype="S")
+
         self._model = IR12SpeciationModel(
-            X, Y,
-            self.init_abundance,
-            # TODO: maybe expose kwargs below as process inputs
+            X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
-        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
-        self._model.initialize(traits_range)
+        self._model.initialize()
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -149,7 +139,7 @@ class IR12Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.abundance = self._model.abundance
-        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
+        self._model.evaluate_fitness(dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
@@ -188,23 +178,23 @@ class DD03Speciation(Speciation):
             'sigma_mov': self.sigma_mov,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed,
-            "slope_trait_env": self.slope_trait_env,
+            "random_seed": self.random_seed
         }
 
     def initialize(self):
         X, Y = np.meshgrid(self.grid_x, self.grid_y)
 
+        trait_names = [k[0] for k in self.init_trait_funcs]
+        self.trait = np.array(trait_names, dtype="S")
+
         self._model = DD03SpeciationModel(
-            X, Y,
-            self.init_abundance,
+            X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
             lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
 
-        traits_range = [[min_t, max_t] for min_t, max_t in zip(self.init_min_trait, self.init_max_trait)]
-        self._model.initialize(traits_range)
+        self._model.initialize()
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -215,7 +205,7 @@ class DD03Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.abundance = self._model.abundance
-        self._model.evaluate_fitness(self.env_field, self.min_env, self.max_env, dt)
+        self._model.evaluate_fitness(dt)
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
@@ -237,7 +227,7 @@ class CompoundEnvironment:
 
 
 @xs.process
-class ElevationEnvField1:
+class ElevationEnvField:
     """Topographic elevation used as one environment field for the
     speciation model.
 
@@ -253,25 +243,197 @@ class ElevationEnvField1:
 
 
 @xs.process
-class ElevationEnvField2:
-    """Topographic elevation used as one environment field for the
-    speciation model.
-
+class PrecipitationField:
     """
-    elevation = xs.foreign(SurfaceTopography, "elevation")
+    Orographic precipitation used as an environmental field
+    for the speciation model.
+    """
+    precip = xs.foreign(OrographicPrecipitation, 'precip_rate')
     field = xs.variable(dims=("y", "x"), intent="out", groups="env_field")
 
     def initialize(self):
-        self.field = self.elevation
+        self.field = self.precip
 
     def run_step(self):
-        self.field = self.elevation
+        self.field = self.precip
 
 
-ir12spec_model = basic_model.update_processes(
-    {"life": IR12Speciation, "life_env": CompoundEnvironment}
+@xs.process
+class RandomSeedFederation:
+    """One random seed to rule them all!"""
+
+    seed = xs.variable(
+        default=None,
+        description="random number generator seed",
+        static=True
+    )
+
+    the_seed = xs.variable(intent='out', global_name="random_seed")
+
+    def initialize(self):
+        self.the_seed = self.seed
+
+
+@xs.process
+class TraitBase:
+    """Base class for representing a single trait.
+
+    Do not use this class directly in a xsimlab.Model. Instead,
+    create one subclass of this class for one trait.
+
+    Every subclass must at least provide an implementation for
+    computing optimal trait values.
+
+    For convenience, this class contains a default implementation
+    for computing initial trait values, although it could be
+    overriden in subclasses.
+
+    """
+    random_seed = xs.variable(
+        default=None,
+        description="random number generator seed",
+        static=True
+    )
+    init_trait_min = xs.variable(default=0, description="min initial trait value")
+    init_trait_max = xs.variable(default=1, description="max initial trait value")
+
+    init_trait_func = xs.any_object(
+        description="initialize trait function", groups="init_trait_funcs"
+    )
+    opt_trait_func = xs.any_object(
+        description="optimal trait function", groups="opt_trait_funcs"
+    )
+
+    def _compute_init_trait(self, init_abundance):
+        """Set initial trait values for individuals.
+
+        By default, initial values are randomly generated from
+        a Uniform distribution bounded by
+        `init_value_min` and `init_value_max`.
+
+        It is possible to provide alternative implementation in
+        subclasses, though.
+
+        Parameters
+        ----------
+        init_abundance : int
+            Number of individuals for the initial population.
+
+        Returns
+        -------
+        init_trait_values : array
+            Initial trait value of each individual.
+
+        """
+        return self._rng.uniform(
+            self.init_trait_min, self.init_trait_max, init_abundance
+        )
+
+    def _compute_opt_trait(self, grid_positions):
+        """This is where the computation of the optimal trait
+        must be implemented in subclasses.
+
+        Parameters
+        ----------
+        grid_positions : array-like
+            Positions of individuals aligned on the model grid,
+            which may be used to retrieve local environment values
+            for each individual.
+
+        Returns
+        -------
+        opt_trait : array
+            Optimal trait value for each individual.
+
+        """
+        # must be implemented in subclasses
+        raise NotImplementedError
+
+    def initialize(self):
+        self._rng = np.random.default_rng(self.random_seed)
+        self.init_trait_func = self._compute_init_trait
+        self.opt_trait_func = self._compute_opt_trait
+
+
+@xs.process
+class FastscapeElevationTrait(TraitBase):
+    """Example of a trait that is based on the elevation of the
+    topographic surface simulated by Fastscape.
+
+    This process computes normalized optimal trait values
+    that linearly depend on elevation.
+    """
+    topo_elevation = xs.foreign(SurfaceTopography, "elevation")
+    random_seed = xs.foreign(RandomSeedFederation, 'seed', intent='in')
+
+    lin_slope = xs.variable(
+        description="slope of opt. trait vs. elevation linear relationship"
+    )
+    norm_min = xs.variable(
+        description="min elevation value for normalization"
+    )
+    norm_max = xs.variable(
+        description="max elevation value for normalization"
+    )
+
+    def _compute_opt_trait(self, grid_positions):
+        env_field = self.topo_elevation.ravel()[grid_positions]
+        norm_env_field = (env_field - self.norm_min) / (self.norm_max - self.norm_min)
+        opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
+
+        return opt_trait
+
+
+@xs.process
+class FastscapePrecipitationTrait(TraitBase):
+    """Example of a trait that is based on the precipitation over
+    topographic surface simulated by Fastscape.
+
+    This process computes normalized optimal trait values
+    that linearly depend on precipitation.
+    """
+    oro_precipitation = xs.foreign(OrographicPrecipitation, "precip_rate")
+    random_seed = xs.foreign(RandomSeedFederation, 'seed', intent='in')
+
+    lin_slope = xs.variable(
+        description="slope of opt. trait vs. precipitation linear relationship"
+    )
+    norm_min = xs.variable(
+        description="min precipitation value for normalization"
+    )
+    norm_max = xs.variable(
+        description="max precipitation value for normalization"
+    )
+
+    def _compute_opt_trait(self, grid_positions):
+        env_field = self.oro_precipitation.ravel()[grid_positions]
+        norm_env_field = (env_field - self.norm_min) / (self.norm_max - self.norm_min)
+        opt_trait = ((self.lin_slope * (norm_env_field - 0.5)) + 0.5)
+
+        return opt_trait
+
+
+nocomp_adaspec_model = basic_model.update_processes(
+    {'life': IR12Speciation,
+     'trait_elev': FastscapeElevationTrait,
+     'trait_prep': FastscapePrecipitationTrait,
+     'life_env': CompoundEnvironment,
+     'elevation': ElevationEnvField,
+     'precip': PrecipitationField,
+     'random': RandomSeedFederation,
+     'precipitation': OrographicPrecipitation,
+     'drainage': OrographicDrainageDischarge}
 )
 
-dd03spec_model = basic_model.update_processes(
-    {"life": DD03Speciation, "life_env": CompoundEnvironment}
+wcomp_adaspec_model_model = basic_model.update_processes(
+    {'life': DD03Speciation,
+     'trait_elev': FastscapeElevationTrait,
+     'trait_prep': FastscapePrecipitationTrait,
+     'life_env': CompoundEnvironment,
+     'elevation': ElevationEnvField,
+     'precip': PrecipitationField,
+     'random': RandomSeedFederation,
+     'precipitation': OrographicPrecipitation,
+     'drainage': OrographicDrainageDischarge
+     }
 )

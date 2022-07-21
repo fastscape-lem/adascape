@@ -14,9 +14,9 @@ class SpeciationModelBase:
     types of speciation models.
     """
 
-    def __init__(self, grid_x, grid_y, init_abundance, slope_trait_env=[0.95], lifespan=None,
-                 random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 distance_method='ward', distance_value=0.5):
+    def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
+                 lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
+                 on_extinction='warn', distance_method='ward', distance_value=0.5):
         """
         Initialization of based model.
 
@@ -49,7 +49,22 @@ class SpeciationModelBase:
             connectivity of the generation tree built by calling
             ``.population`` or ``.to_dataframe()`` at arbitrary steps of a
             model run.
+        on_extinction : {'warn', 'raise', 'ignore'}
+            Behavior when no offspring is generated (total extinction of
+            population) during model runtime. 'warn' (default) displays
+            a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
+            stops) or 'ignore' silently continues the simulation
+            doing nothing (no population).
         """
+        valid_on_extinction = ('warn', 'raise', 'ignore')
+
+        if on_extinction not in valid_on_extinction:
+            raise ValueError(
+                "invalid value found for 'on_extinction' parameter. "
+                "Found {!r}, must be one of {!r}"
+                    .format(on_extinction, valid_on_extinction)
+            )
+
         grid_x = np.asarray(grid_x)
         grid_y = np.asarray(grid_y)
         self._grid_bounds = {'x': np.array([grid_x.min(), grid_x.max()]),
@@ -64,10 +79,10 @@ class SpeciationModelBase:
         self._truncnorm.random_state = self._rng
 
         self._params = {
-            'slope_trait_env': slope_trait_env,
             'lifespan': lifespan,
             'random_seed': random_seed,
             'always_direct_parent': always_direct_parent,
+            'on_extinction': on_extinction,
             'distance_method': distance_method,
             'distance_value': distance_value
         }
@@ -75,15 +90,22 @@ class SpeciationModelBase:
         self._rescale_rates = rescale_rates
         self._set_direct_parent = True
 
-    def initialize(self, trait_range, x_range=None, y_range=None):
+        # dict of callables to generate initial values for each trait
+        self._init_trait_funcs = init_trait_funcs
+        # dict of callables to compute optimal values for each trait
+        self._opt_trait_funcs = opt_trait_funcs
+
+        # number of traits
+        self.n_traits = len(self._init_trait_funcs)
+        assert len(self._init_trait_funcs) == len(self._opt_trait_funcs)
+
+    def initialize(self, x_range=None, y_range=None):
         """
         Initialization of a group of individuals with randomly distributed traits,
         and which are randomly located in a two-dimensional grid.
 
         Parameters
         ----------
-        trait_range : list of lists,
-            with trait ranges of initial population
         x_range : tuple, optional
             Spatial range (min, max) to define initial spatial bounds
             of population in the x direction. Values must be contained
@@ -105,17 +127,10 @@ class SpeciationModelBase:
                 (y_range[0] < y_bounds[0]) or (y_range[1] > y_bounds[1])):
             raise ValueError("x_range and y_range must be within model bounds")
 
-        if not all([isinstance(i, (list, tuple)) for i in trait_range]):
-            raise ValueError("Range of trait values for each trait "
-                             "must be provided as a list of lists, "
-                             "where each sublist contains the minimum and "
-                             "maximum value for each trait, e.g.:"
-                             "[[trait1.min, trait1.max], [trait2.min, trait2.max] ... ]. "
-                             "Instead got {!r}".format(trait_range))
-
-        init_traits = np.zeros((self._init_abundance, len(trait_range)))
-        for i, tg in enumerate(trait_range):
-            init_traits[:, i] = self._sample_in_range(tg)
+        # array of shape (n_individuals, n_traits)
+        init_traits = np.column_stack(
+                [func(self._init_abundance) for func in self._init_trait_funcs.values()]
+            )
 
         clus = fclusterdata(init_traits,
                             method=self._params['distance_method'],
@@ -143,7 +158,7 @@ class SpeciationModelBase:
 
         Returns
         -------
-        taxon_ids based on the clustering of indiviudals with similar trait values
+        taxon_ids based on the clustering of individuals with similar trait values
         and common ancestry.
         """
         if self._set_direct_parent:
@@ -246,28 +261,6 @@ class SpeciationModelBase:
         grid_points = np.column_stack([c.ravel() for c in grid_coords])
         return spatial.cKDTree(grid_points)
 
-    def _get_local_env_value(self, env_field, pop_points):
-        """
-        Local environmental value defined on the grid
-        of the respective environmental field and taken
-        as the nearest grid node to the location of
-        each individual.
-
-        Parameters
-        ----------
-        env_field : array-like
-            Environmental field defined on the grid.
-        pop_points : array-like
-            x and y location of individuals on the grid.
-
-        Returns
-        -------
-        array_like
-            value of environmental field near the individual location.
-        """
-        _, idx = self._grid_index.query(pop_points)
-        return env_field.ravel()[idx]
-
     def _sample_in_range(self, values_range):
         """
         Draw a random sample of values for a given range following
@@ -328,32 +321,6 @@ class SpeciationModelBase:
         a, b = (0 - trait) / sigma, (1 - trait) / sigma
         mut_trait = self._truncnorm.rvs(a, b, loc=trait, scale=sigma)
         return mut_trait
-
-    def _optimal_trait_lin(self, env_field_min, env_field_max, local_env_val, slope):
-        """
-        Normalized optimal trait value as a linear relationship
-        with environmental field. Noticed that the local
-        environmental field has been computed as a normalized
-        local environmental field value based on the maximum and
-        minimum values of the complete environmental field.
-
-        Parameters
-        ----------
-        env_field_min : float
-            Minimum value for the environmental field throughout simulation
-        env_field_max : float
-            Maximum value for the environmental field throughout simulation
-         local_env_val : array-like
-            local environmental field for each individual
-
-        Returns
-        -------
-        array-like
-            optimal trait values for each individual.
-        """
-        norm_loc_env_field = (local_env_val - env_field_min) / (env_field_max - env_field_min)
-        opt_trait = ((slope * (norm_loc_env_field - 0.5)) + 0.5)
-        return opt_trait
 
     def _scaled_param(self, param, dt):
         """ Rescale a parameter as a fraction of the square root
@@ -428,10 +395,11 @@ class IR12SpeciationModel(SpeciationModelBase):
     within the domain delineated by the grid.
     """
 
-    def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
-                 distance_method='ward',  distance_value=0.5,
-                 slope_trait_env=[0.95], nb_radius=500., car_cap=1000., sigma_env_trait=500., sigma_mov=5.,
-                 sigma_mut=500., mut_prob=0.05, on_extinction='warn'):
+    def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
+                 lifespan=None, random_seed=None, always_direct_parent=True,
+                 on_extinction='warn', distance_method='ward', distance_value=0.5,
+                 nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
+                 sigma_mut=0.05, mut_prob=0.05):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -449,31 +417,17 @@ class IR12SpeciationModel(SpeciationModelBase):
             Width of mutation curve.
         mut_prob: float
             Probability of mutation occurring in offspring.
-        on_extinction : {'warn', 'raise', 'ignore'}
-            Behavior when no offspring is generated (total extinction of
-            population) during model runtime. 'warn' (default) displays
-            a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
-            stops) or 'ignore' silently continues the simulation
-            doing nothing (no population).
-
         """
         super().__init__(grid_x=grid_x, grid_y=grid_y,
+                         init_trait_funcs=init_trait_funcs,
+                         opt_trait_funcs=opt_trait_funcs,
                          init_abundance=init_abundance,
-                         slope_trait_env=slope_trait_env,
                          lifespan=lifespan,
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
+                         on_extinction=on_extinction,
                          distance_method=distance_method,
                          distance_value=distance_value)
-
-        valid_on_extinction = ('warn', 'raise', 'ignore')
-
-        if on_extinction not in valid_on_extinction:
-            raise ValueError(
-                "invalid value found for 'on_extinction' parameter. "
-                "Found {!r}, must be one of {!r}"
-                    .format(on_extinction, valid_on_extinction)
-            )
 
         # default parameter values
         self._params.update({
@@ -483,8 +437,10 @@ class IR12SpeciationModel(SpeciationModelBase):
             'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
             'mut_prob': mut_prob,
+            'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
-            'always_direct_parent': always_direct_parent
+            'distance_method': distance_method,
+            'distance_value': distance_value
         })
 
     def _get_n_gen(self, dt):
@@ -527,46 +483,28 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         return np.array([len(nb) for nb in neighbors])
 
-    def evaluate_fitness(self, env_field, env_field_min, env_field_max, dt):
+    def evaluate_fitness(self, dt):
         """Evaluate fitness and generate offspring number for group of individuals and
         with environmental conditions both taken at the current time step.
 
         Parameters
         ----------
-        env_field : array-like
-            Environmental field defined on the grid.
-        env_field_min : list
-            Minimum value for the environmental field throughout simulation
-        env_field_max : list
-            Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
         """
 
         if self.abundance:
+            individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
+            _, grid_positions = self._grid_index.query(individual_positions)
 
-            if not env_field.shape[0] == self._individuals['trait'].shape[1]:
-                raise ValueError("Number of environmental fields and traits "
-                                 "should be equal, respectively, on the "
-                                 "first and second dimension. "
-                                 "Instead got {!r} environmental field(s)"
-                                 " and {!r} trait(s)".format(env_field.shape[0], self._individuals['trait'].shape[1]))
-
-            pop_points = np.column_stack([self._individuals['x'],
-                                          self._individuals['y']])
+            # array of shape (n_individuals, n_traits)
+            opt_trait = np.column_stack(
+                [func(grid_positions) for func in self._opt_trait_funcs.values()]
+            )
 
             # compute offspring sizes
-            r_d = self._params['car_cap'] / self._count_neighbors(pop_points)
-
-            opt_trait = np.zeros_like(self._individuals['trait'])
-            for i in range(env_field.shape[0]):
-                # Compute local individual environmental field
-                local_env = self._get_local_env_value(env_field[i, :, :],
-                                                      np.column_stack([self._individuals['x'], self._individuals['y']]))
-                # Compute optimal trait value
-                opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
-                                                          self._params['slope_trait_env'][i])
+            r_d = self._params['car_cap'] / self._count_neighbors(individual_positions)
 
             trait_fitness = []
             for i in range(self._individuals['trait'].shape[1]):
@@ -658,18 +596,19 @@ class IR12SpeciationModel(SpeciationModelBase):
 
 class DD03SpeciationModel(SpeciationModelBase):
     """
-    Speciation model for asexual populations based on the model by:
+    Speciation model for asexual populations adapted from:
         Doebeli, M., & Dieckmann, U. (2003).
         Speciation along environmental gradients.
         Nature, 421, 259–264.
         https://doi.org/10.1038/nature01312.Published.
     """
 
-    def __init__(self, grid_x, grid_y, init_abundance, lifespan=None, random_seed=None, always_direct_parent=True,
-                 distance_method='ward', distance_value=0.5,
-                 slope_trait_env=[0.95], birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
-                 mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9, sigma_comp_dist=0.19,
-                 on_extinction='warn'):
+    def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
+                 lifespan=None, random_seed=None, always_direct_parent=True,
+                 on_extinction='warn', distance_method='ward', distance_value=0.5,
+                 birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
+                 mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
+                 sigma_comp_dist=0.19):
         """
         Initialization of speciation model with competition.
 
@@ -696,22 +635,15 @@ class DD03SpeciationModel(SpeciationModelBase):
         """
 
         super().__init__(grid_x=grid_x, grid_y=grid_y,
+                         init_trait_funcs=init_trait_funcs,
+                         opt_trait_funcs=opt_trait_funcs,
                          init_abundance=init_abundance,
-                         slope_trait_env=slope_trait_env,
                          lifespan=lifespan,
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
+                         on_extinction=on_extinction,
                          distance_method=distance_method,
                          distance_value=distance_value)
-
-        valid_on_extinction = ('warn', 'raise', 'ignore')
-
-        if on_extinction not in valid_on_extinction:
-            raise ValueError(
-                "invalid value found for 'on_extinction' parameter. "
-                "Found {!r}, must be one of {!r}"
-                    .format(on_extinction, valid_on_extinction)
-            )
 
         self._params.update({
             'birth_rate': birth_rate,
@@ -724,10 +656,12 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
             'always_direct_parent': always_direct_parent,
-            'on_extinction': on_extinction
+            'on_extinction': on_extinction,
+            'distance_method': distance_method,
+            'distance_value': distance_value
         })
 
-    def evaluate_fitness(self, env_field, env_field_min, env_field_max, dt):
+    def evaluate_fitness(self, dt):
         """
         Evaluate fitness of individuals' in a given environmental field.
         The computation is based on the Gillespie algorithm for a group
@@ -735,38 +669,22 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         Parameters
         ----------
-        env_field : array-like
-            Environmental field defined on the grid.
-        env_field_min : list
-            Minimum value for the environmental field throughout simulation
-        env_field_max : list
-            Maximum value for the environmental field throughout simulation
         dt : float
             Time step duration.
 
         """
         if self.abundance:
-            if not env_field.shape[0] == self._individuals['trait'].shape[1]:
-                raise ValueError("Number of environmental fields and traits "
-                             "should be equal, respectively, on the "
-                             "first and second dimension. "
-                             "Instead got {!r} environmental field(s)"
-                             " and {!r} trait(s)".format(env_field.shape[0], self._individuals['trait'].shape[1]))
+            individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
+            _, grid_positions = self._grid_index.query(individual_positions)
 
-            opt_trait = np.zeros_like(self._individuals['trait'])
-            for i in range(env_field.shape[0]):
-                # Compute local individual environmental field
-                local_env = self._get_local_env_value(env_field[i, :, :],
-                                                      np.column_stack(
-                                                          [self._individuals['x'], self._individuals['y']]))
-                # Compute optimal trait value
-                opt_trait[:, i] = self._optimal_trait_lin(env_field_min[i], env_field_max[i], local_env,
-                                                          self._params['slope_trait_env'][i])
+            # array of shape (n_individuals, n_traits)
+            opt_trait = np.column_stack(
+                [func(grid_positions) for func in self._opt_trait_funcs.values()]
+            )
 
             # Compute events probabilities
-            ba, a_plus_b = self.death_rate(opt_trait=opt_trait, dt=dt)
-            birth_i = np.array(self.abundance * [self._params['birth_rate']]) + ba
-            death_i = a_plus_b
+            net_gain, death_i = self.logistic_growth_comp(opt_trait=opt_trait, dt=dt)
+            birth_i = np.array(self.abundance * [self._params['birth_rate']]) + net_gain
             movement_i = self.abundance * [self._params['movement_rate']]
             events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
             events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
@@ -873,9 +791,11 @@ class DD03SpeciationModel(SpeciationModelBase):
             'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
 
-    def death_rate(self, opt_trait, dt):
+    def logistic_growth_comp(self, opt_trait, dt):
         """
-        Logistic death rate
+        Logistic growth components
+
+        N = (1 - N/K_max) (1 - N_eff/K_eff)
 
         Parameters
         ----------
@@ -914,9 +834,11 @@ class DD03SpeciationModel(SpeciationModelBase):
         # environmental fitness to local environmental fields
         delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
         env_fitness = np.prod(delta_env_trait, axis=1)
-        # local carrying capacity
-        k = self._params['car_cap_max'] * env_fitness
         # global carrying capacity
         a = self.abundance/self._params['car_cap_max']
-        b = n_eff / k
-        return b*a, b+a
+        # local carrying capacity
+        k_eff = self._params['car_cap_max'] * env_fitness
+        b = n_eff / k_eff
+        net_gain = b*a
+        net_loss = b+a
+        return net_gain, net_loss

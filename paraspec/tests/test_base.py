@@ -6,12 +6,12 @@ import pandas as pd
 import pytest
 
 from paraspec.base import IR12SpeciationModel, DD03SpeciationModel
+from paraspec.fastscape_ext import FastscapeElevationTrait
 
 
 @pytest.fixture
 def params_IR12():
     return {
-        'slope_trait_env': [0.95],
         'lifespan': 1,
         'random_seed': 1234,
         'always_direct_parent': True,
@@ -26,10 +26,10 @@ def params_IR12():
         'on_extinction': 'ignore'
     }
 
+
 @pytest.fixture
 def params_DD03():
     return {
-        'slope_trait_env': [0.95],
         'lifespan': 1,
         'random_seed': 1234,
         'always_direct_parent': True,
@@ -48,6 +48,7 @@ def params_DD03():
 
     }
 
+
 @pytest.fixture(scope='session')
 def grid():
     X, Y = np.meshgrid(np.linspace(0, 20, 10), np.linspace(0, 10, 20))
@@ -56,41 +57,63 @@ def grid():
 
 @pytest.fixture(scope='session')
 def env_field(grid):
-    return np.random.uniform(0, 1, np.expand_dims(grid[0], 0).shape)
+    return np.random.uniform(0, 1, grid[0].shape)
+
+
+@pytest.fixture(scope='session')
+def trait_funcs(env_field):
+    trait_01 = FastscapeElevationTrait(topo_elevation=env_field,
+                                       init_trait_min=0.5,
+                                       init_trait_max=0.5,
+                                       lin_slope=0.95,
+                                       norm_min=env_field.min(),
+                                       norm_max=env_field.max(),
+                                       random_seed=1234)
+    trait_01.initialize()
+
+    init_trait_funcs = {'trait_1': trait_01.init_trait_func}
+    opt_trait_funcs = {'trait_1': trait_01.opt_trait_func}
+
+    return init_trait_funcs, opt_trait_funcs
 
 
 @pytest.fixture
-def model_IR12(params_IR12, grid):
+def model_IR12(params_IR12, grid, trait_funcs):
     X, Y = grid
-    return IR12SpeciationModel(X, Y, 10, **params_IR12)
+    init_trait_funcs, opt_trait_funcs = trait_funcs
+    return IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
 
 
 @pytest.fixture
-def model_DD03(params_DD03, grid):
+def model_DD03(params_DD03, grid, trait_funcs):
     X, Y = grid
-    return DD03SpeciationModel(X, Y, 10, **params_DD03)
+    init_trait_funcs, opt_trait_funcs = trait_funcs
+    return DD03SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_DD03)
+
 
 @pytest.fixture
-def initialized_model_IR12(model_IR12, env_field):
+def initialized_model_IR12(model_IR12):
     m = copy.deepcopy(model_IR12)
-    m.initialize([[0.5, 0.5]])
+    m.initialize()
     return m
 
+
 @pytest.fixture
-def initialized_model_DD03(model_DD03, env_field):
+def initialized_model_DD03(model_DD03):
     m = copy.deepcopy(model_DD03)
-    m.initialize([[0.5, 0.5]])
+    m.initialize()
     return m
+
 
 @pytest.fixture(scope='session')
 def model_IR12_repr():
     return dedent("""\
     <IR12SpeciationModel (individuals: not initialized)>
     Parameters:
-        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
+        on_extinction: ignore
         distance_method: ward
         distance_value: 0.5
         nb_radius: 5
@@ -99,7 +122,6 @@ def model_IR12_repr():
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
-        on_extinction: ignore
     """)
 
 
@@ -108,10 +130,10 @@ def initialized_model_IR12_repr():
     return dedent("""\
     <IR12SpeciationModel (individuals: 10)>
     Parameters:
-        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
+        on_extinction: ignore
         distance_method: ward
         distance_value: 0.5
         nb_radius: 5
@@ -120,18 +142,18 @@ def initialized_model_IR12_repr():
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
-        on_extinction: ignore
     """)
+
 
 @pytest.fixture(scope='session')
 def model_DD03_repr():
     return dedent("""\
     <DD03SpeciationModel (individuals: not initialized)>
     Parameters:
-        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
+        on_extinction: warn
         distance_method: ward
         distance_value: 0.5
         birth_rate: 1
@@ -143,7 +165,6 @@ def model_DD03_repr():
         sigma_mov: 4
         sigma_comp_trait: 0.9
         sigma_comp_dist: 0.2
-        on_extinction: warn
     """)
 
 
@@ -152,10 +173,10 @@ def initialized_model_DD03_repr():
     return dedent("""\
     <DD03SpeciationModel (individuals: 10)>
     Parameters:
-        slope_trait_env: [0.95]
         lifespan: 1
         random_seed: 1234
         always_direct_parent: True
+        on_extinction: warn
         distance_method: ward
         distance_value: 0.5
         birth_rate: 1
@@ -167,7 +188,6 @@ def initialized_model_DD03_repr():
         sigma_mov: 4
         sigma_comp_trait: 0.9
         sigma_comp_dist: 0.2
-        on_extinction: warn
     """)
 
 
@@ -176,20 +196,22 @@ def _in_bounds(grid_coord, pop_coord):
             and pop_coord.max() <= grid_coord.max())
 
 
-class TestParapatricSpeciationModel(object):
+class TestParapatricSpeciationModel:
 
-    def test_constructor(self):
+    def test_constructor(self, grid, trait_funcs):
+
+        X, Y = grid
+        init_trait_funcs, opt_trait_funcs = trait_funcs
 
         with pytest.raises(ValueError, match="invalid value"):
-            IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10,
-                                on_extinction='invalid')
+            IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, on_extinction='invalid')
 
         rs = np.random.default_rng(0)
 
-        m = IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=rs)
+        m = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, random_seed=rs)
         assert m._rng is rs
 
-        m2 = IR12SpeciationModel([0, 1, 2], [0, 1, 2], 10, random_seed=0)
+        m2 = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, random_seed=0)
         np.testing.assert_equal(m2._rng.__getstate__()['state'], rs.__getstate__()['state'])
 
     def test_params(self, params_IR12, model_IR12, params_DD03, model_DD03):
@@ -224,14 +246,10 @@ class TestParapatricSpeciationModel(object):
         if error:
             expected = "x_range and y_range must be within model bounds"
             with pytest.raises(ValueError, match=expected):
-                model_IR12.initialize(
-                    [[0, 1]], x_range=x_range, y_range=y_range
-                )
+                model_IR12.initialize(x_range=x_range, y_range=y_range)
 
         else:
-            model_IR12.initialize(
-                [[0, 1]], x_range=x_range, y_range=y_range
-            )
+            model_IR12.initialize( x_range=x_range, y_range=y_range)
             x_r = x_range or grid[0]
             y_r = y_range or grid[1]
             assert _in_bounds(np.array(x_r), model_IR12.individuals['x'])
@@ -261,67 +279,54 @@ class TestParapatricSpeciationModel(object):
         expected = [0.5, 0.04, 4.0, 0.5]
         assert rescaled_params == expected
 
-    def test_scaled_params_not_effective(self, params_IR12, grid):
+    def test_scaled_params_not_effective(self, params_IR12, grid, trait_funcs):
         X, Y = grid
+        init_trait_funcs, opt_trait_funcs = trait_funcs
         params_IR12.pop('lifespan')
         test_params = ['sigma_env_trait', 'mut_prob', 'sigma_mov', 'sigma_mut']
-        model = IR12SpeciationModel(X, Y, 10, **params_IR12)
+        model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
         actual = [model._scaled_param(params_IR12[p], 1) for p in test_params]
         expected = [params_IR12['sigma_env_trait'], params_IR12['mut_prob'], params_IR12['sigma_mov'], params_IR12['sigma_mut']]
         assert actual == expected
 
-    def test_count_neighbors(self, model_IR12, grid):
+    def test_count_neighbors(self, model_IR12):
         points = np.column_stack([[0, 4, 8, 12], [0, 2, 4, 6]])
         expected = [2, 3, 3, 2]
 
         np.testing.assert_equal(model_IR12._count_neighbors(points), expected)
 
-    def test_get_optimal_trait(self, model_IR12, grid, env_field):
-        # using points = grid points + offset less than grid spacing
-        # expected: env_field and optimal trait should be equal
-        X, Y = grid
-        points = np.column_stack([X.ravel() + 0.1, Y.ravel() + 0.1])
-
-        opt_trait = model_IR12._get_local_env_value(env_field, points)
-
-        np.testing.assert_array_equal(opt_trait, env_field.ravel())
-
     @pytest.mark.parametrize('model', ['IR12', 'DD03'])
-    def test_evaluate_fitness(self, model, model_IR12, model_DD03, env_field):
+    def test_evaluate_fitness(self, model, model_IR12, model_DD03):
 
         if model == 'IR12':
-            model_IR12.initialize([[0.5, 0.5]])
+            model_IR12.initialize()
             init_pop = model_IR12.individuals.copy()
-            model_IR12.evaluate_fitness(env_field, [0], [1], 1)
+            model_IR12.evaluate_fitness(1)
             eval_pop = model_IR12.individuals.copy()
             for k in ['fitness', 'n_offspring']:
                 assert k in eval_pop
-            with pytest.raises(ValueError):
-                model_IR12.evaluate_fitness(env_field.squeeze(), [0], [1], 1)
 
         elif model == 'DD03':
-            model_DD03.initialize([[0.5, 0.5]])
+            model_DD03.initialize()
             init_pop = model_DD03.individuals.copy()
-            model_DD03.evaluate_fitness(env_field, [0], [1], 1)
+            model_DD03.evaluate_fitness(1)
             eval_pop = model_DD03.individuals
             for k in ['events_i', 'death_i']:
                 assert k in eval_pop
-            with pytest.raises(ValueError):
-                model_DD03.evaluate_fitness(env_field.squeeze(), [0], [1], 1)
 
         assert init_pop['n_offspring'].max() == 0
         assert init_pop['n_offspring'].max() < eval_pop['n_offspring'].max()
 
-    def test_update_individuals(self, model_IR12, grid, env_field):
+    def test_update_individuals(self, model_IR12, grid):
         # do many runs to avoid favorable random conditions
         trait_diff = []
 
         for i in range(1000):
             model_IR12._rng = np.random.default_rng(i)
 
-            model_IR12.initialize([[0.5, 0.5]])
+            model_IR12.initialize()
             init_pop = model_IR12.individuals.copy()
-            model_IR12.evaluate_fitness(env_field, [0], [1], 1)
+            model_IR12.evaluate_fitness(1)
             model_IR12.update_individuals(1)
             current_pop = model_IR12.individuals.copy()
 
@@ -334,7 +339,7 @@ class TestParapatricSpeciationModel(object):
             assert _in_bounds(grid[1], current_pop['y'])
 
             # test mutation
-            model_IR12.evaluate_fitness(env_field, [0], [1], 1)
+            model_IR12.evaluate_fitness(1)
             model_IR12.update_individuals(1)
             last_pop = model_IR12.individuals.copy()
             idx = np.searchsorted(current_pop['taxon_id'], last_pop['ancestor_id'])-1
@@ -350,27 +355,27 @@ class TestParapatricSpeciationModel(object):
             np.testing.assert_array_equal(last_pop[k], np.zeros(last_pop['trait'][:, 0].size))
 
     @pytest.mark.parametrize('direct_parent', [True, False])
-    def test_updade_population_parents(self, grid, params_IR12, env_field,
-                                       direct_parent):
+    def test_updade_population_parents(self, grid, params_IR12, trait_funcs, direct_parent):
         X, Y = grid
+        init_trait_funcs, opt_trait_funcs = trait_funcs
         params_IR12['always_direct_parent'] = direct_parent
 
-        model = IR12SpeciationModel(X, Y, 10, **params_IR12)
-        model.initialize([[0.5, 0.5]])
+        model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
+        model.initialize()
 
-        model.evaluate_fitness(env_field, [0], [1], 1)
+        model.evaluate_fitness(1)
         parents0 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, [0], [1], 1)
+        model.evaluate_fitness(1)
         parents1 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, [0], [1], 1)
+        model.evaluate_fitness(1)
         parents2 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(env_field, [0], [1], 1)
+        model.evaluate_fitness(1)
         parents3 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
@@ -383,17 +388,14 @@ class TestParapatricSpeciationModel(object):
             assert parents2.values.max() == parents1.values.max()
             assert parents3.values.max() == parents2.values.max()
 
-    @pytest.mark.parametrize('car_cap_mul,env_field_mul,on_extinction', [
-        (0., 1, 'raise'),
-        (0., 1, 'warn'),
-        (0., 1, 'ignore'),
-        (1., 1e3, 'ignore')
+    @pytest.mark.parametrize('car_cap_mul,on_extinction', [
+        (0., 'raise'),
+        (0., 'warn'),
+        (0., 'ignore'),
     ])
     def test_update_individuals_extinction(self,
                                            initialized_model_IR12,
-                                           env_field,
                                            car_cap_mul,
-                                           env_field_mul,
                                            on_extinction):
 
         subset_keys = ('taxon_id', 'ancestor_id', 'x', 'y', 'trait')
@@ -406,28 +408,27 @@ class TestParapatricSpeciationModel(object):
 
         # no offspring via either r_d values = 0 or very low fitness values
         initialized_model_IR12._params['car_cap'] *= car_cap_mul
-        field = env_field * env_field_mul
 
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):
-                initialized_model_IR12.evaluate_fitness(field, [0], [1], 1)
+                initialized_model_IR12.evaluate_fitness(1)
                 initialized_model_IR12.update_individuals(1)
             return
 
         elif on_extinction == 'warn':
             with pytest.warns(RuntimeWarning, match="no offspring"):
-                initialized_model_IR12.evaluate_fitness(field, [0], [1], 1)
+                initialized_model_IR12.evaluate_fitness(1)
                 initialized_model_IR12.update_individuals(1)
                 current = get_pop_subset()
-                initialized_model_IR12.evaluate_fitness(field, [0], [1], 1)
+                initialized_model_IR12.evaluate_fitness(1)
                 initialized_model_IR12.update_individuals(1)
                 next = get_pop_subset()
 
         else:
-            initialized_model_IR12.evaluate_fitness(field, [0], [1], 1)
+            initialized_model_IR12.evaluate_fitness(1)
             initialized_model_IR12.update_individuals(1)
             current = get_pop_subset()
-            initialized_model_IR12.evaluate_fitness(field, [0], [1], 1)
+            initialized_model_IR12.evaluate_fitness(1)
             initialized_model_IR12.update_individuals(1)
             next = get_pop_subset()
 
