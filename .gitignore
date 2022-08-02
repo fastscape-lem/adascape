@@ -121,10 +121,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/paraspec/eval_plots/
+/adascape/eval_plots/
 
 # Dask stuff
-/paraspec/dask-worker-space/
+/adascape/dask-worker-space/
 *.lock
 *.dirlock
 

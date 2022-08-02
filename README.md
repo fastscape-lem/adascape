@@ -1,9 +1,7 @@
-# paraspec: Parapatric Speciation Model
+# adascape: Adaptive speciation and landscape evolution model
 
-The "paraspec" package is a simple Parapatric Speciation Model written
-in Python.
-
-It may be easily coupled with a landscape evolution model (fastscape).
+The "adascape" package contain two simple adaptive speciation models written
+in Python that can be easily coupled with a landscape evolution model (fastscape).
 
 ## Install
 
@@ -13,12 +11,12 @@ This package depends on Python (3.5 or later is recommended),
 [pandas](https://pandas.pydata.org/).
 
 This package also provides a [fastscape](https://fastscape.readthedocs.io)
-extension (optional dependency).
+and a [dendropy](https://dendropy.org/) extensions (optional dependencies).
 
 To install the package locally, first clone this repository:
 
 ``` shell
-$ git clone https://gitext.gfz-potsdam.de/sec55-public/parapatric-speciation
+$ git clone https://gitext.gfz-potsdam.de/sec55-public/adaptive-speciation
 $ cd parapatric-speciation
 ```
 
@@ -48,5 +46,5 @@ To run the tests, you need to have
 Then simply run from this repository's root directory:
 
 ``` shell
-$ pytest paraspec -v
+$ pytest adascape -v
 ```

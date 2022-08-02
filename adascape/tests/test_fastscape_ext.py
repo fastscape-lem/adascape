@@ -5,10 +5,10 @@ import pytest
 
 pytest.importorskip("fastscape")  # isort:skip
 
-from paraspec.fastscape_ext import (IR12Speciation, DD03Speciation,
+from adascape.fastscape_ext import (IR12Speciation, DD03Speciation,
                                     CompoundEnvironment, ElevationEnvField, PrecipitationField,
                                     FastscapeElevationTrait, FastscapePrecipitationTrait,
-                                    ir12spec_model, dd03spec_model)
+                                    nocomp_adaspec_model, wcomp_adaspec_model_model)
 
 
 @pytest.fixture
@@ -162,7 +162,7 @@ def test_compound_environment():
 
 
 def test_paraspec_model():
-    assert isinstance(ir12spec_model["life"], IR12Speciation)
-    assert isinstance(ir12spec_model["life_env"], CompoundEnvironment)
-    assert isinstance(dd03spec_model["life"], DD03Speciation)
-    assert isinstance(dd03spec_model["life_env"], CompoundEnvironment)
+    assert isinstance(nocomp_adaspec_model["life"], IR12Speciation)
+    assert isinstance(nocomp_adaspec_model["life_env"], CompoundEnvironment)
+    assert isinstance(wcomp_adaspec_model_model["life"], DD03Speciation)
+    assert isinstance(wcomp_adaspec_model_model["life_env"], CompoundEnvironment)
