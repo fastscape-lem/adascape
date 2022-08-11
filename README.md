@@ -17,7 +17,7 @@ To install the package locally, first clone this repository:
 
 ``` shell
 $ git clone https://gitext.gfz-potsdam.de/sec55-public/adaptive-speciation
-$ cd parapatric-speciation
+$ cd adaptive-speciation
 ```
 
 Then run the command below (this will install numpy, scipy and pandas
