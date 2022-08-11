@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from paraspec.base import IR12SpeciationModel, DD03SpeciationModel
-from paraspec.fastscape_ext import FastscapeElevationTrait
+from adascape.base import IR12SpeciationModel, DD03SpeciationModel
+from adascape.fastscape_ext import FastscapeElevationTrait
 
 
 @pytest.fixture
@@ -347,8 +347,8 @@ class TestParapatricSpeciationModel:
 
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff ** 2))
-        scaled_sigma_mut = 1  # sigma_mut * sqrt(m_freq) * 1
-        assert pytest.approx(trait_rms, scaled_sigma_mut)
+        scaled_sigma_mut = model_IR12.params['sigma_mut'] * np.sqrt(model_IR12.params['mut_prob'])
+        assert trait_rms == pytest.approx(scaled_sigma_mut, 0.1)
 
         # test reset fitness data
         for k in ['fitness', 'n_offspring']:

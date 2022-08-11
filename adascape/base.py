@@ -28,8 +28,6 @@ class SpeciationModelBase:
             Grid y-coordinates.
         init_abundance : int
             Total number of individuals generated as the initial population.
-        slope_trait_env : float
-            slope of the relationship between optimum trait and environmental field
         lifespan : float, optional
             Reproductive lifespan of organism. If None (default), the
             lifespan will always match time step length
@@ -78,6 +76,7 @@ class SpeciationModelBase:
         self._truncnorm = stats.truncnorm
         self._truncnorm.random_state = self._rng
 
+        #TODO: expose distance_value and distance_method as options to users
         self._params = {
             'lifespan': lifespan,
             'random_seed': random_seed,

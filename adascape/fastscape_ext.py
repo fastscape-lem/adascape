@@ -2,9 +2,12 @@ from fastscape.models import basic_model
 from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
-from paraspec.base import IR12SpeciationModel
-from paraspec.base import DD03SpeciationModel
+from adascape.base import IR12SpeciationModel
+from adascape.base import DD03SpeciationModel
 from orographic_precipitation.fastscape_ext import OrographicPrecipitation, OrographicDrainageDischarge
+
+
+#TODO: expose distance_value and distance_method as options to users
 
 
 @xs.process
@@ -90,7 +93,7 @@ class Speciation:
 @xs.process
 class IR12Speciation(Speciation):
     """Irwin (2012) Speciation model as a fastscape extension.
-    For more info, see :class:`paraspec.base.IR12SpeciationModel`.
+    For more info, see :class:`adascape.base.IR12SpeciationModel`.
     """
     nb_radius = xs.variable(description="fixed neighborhood radius")
     car_cap = xs.variable(description="carrying capacity within a neighborhood")
@@ -153,7 +156,7 @@ class IR12Speciation(Speciation):
 @xs.process
 class DD03Speciation(Speciation):
     """Doebeli & Dieckmann (2003) Speciation model as a fastscape extension.
-    For more info, see :class:`paraspec.base.DD03SpeciationModel`.
+    For more info, see :class:`adascape.base.DD03SpeciationModel`.
     """
     birth_rate = xs.variable(description="birth rate of individuals")
     movement_rate = xs.variable(description="movement/dispersion rate of individuals")
