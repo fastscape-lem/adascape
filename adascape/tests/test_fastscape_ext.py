@@ -25,7 +25,9 @@ def specDD03_process(trait_funcs):
         'random_seed': 1234,
         'rescale_rates': True,
         'sigma_comp_trait': 0.9,
-        'sigma_comp_dist': 0.2
+        'sigma_comp_dist': 0.2,
+        'distance_metric': 'ward',
+        'distance_value': 0.5
     }
 
     x = np.linspace(0, 20, 10)
@@ -48,7 +50,9 @@ def specIR12_process(trait_funcs):
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'random_seed': 1234,
-        'rescale_rates': True
+        'rescale_rates': True,
+        'distance_metric': 'ward',
+        'distance_value': 0.5
     }
 
     x = np.linspace(0, 20, 10)

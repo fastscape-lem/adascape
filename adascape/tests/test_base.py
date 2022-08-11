@@ -15,7 +15,7 @@ def params_IR12():
         'lifespan': 1,
         'random_seed': 1234,
         'always_direct_parent': True,
-        'distance_method': 'ward',
+        'distance_metric': 'ward',
         'distance_value': 0.5,
         'nb_radius': 5,
         'car_cap': 5,
@@ -33,7 +33,7 @@ def params_DD03():
         'lifespan': 1,
         'random_seed': 1234,
         'always_direct_parent': True,
-        'distance_method': 'ward',
+        'distance_metric': 'ward',
         'distance_value': 0.5,
         'sigma_env_trait': 0.5,
         'sigma_mov': 4,
@@ -114,7 +114,7 @@ def model_IR12_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
-        distance_method: ward
+        distance_metric: ward
         distance_value: 0.5
         nb_radius: 5
         car_cap: 5
@@ -134,7 +134,7 @@ def initialized_model_IR12_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
-        distance_method: ward
+        distance_metric: ward
         distance_value: 0.5
         nb_radius: 5
         car_cap: 5
@@ -154,7 +154,7 @@ def model_DD03_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: warn
-        distance_method: ward
+        distance_metric: ward
         distance_value: 0.5
         birth_rate: 1
         movement_rate: 5
@@ -177,7 +177,7 @@ def initialized_model_DD03_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: warn
-        distance_method: ward
+        distance_metric: ward
         distance_value: 0.5
         birth_rate: 1
         movement_rate: 5
@@ -348,7 +348,7 @@ class TestParapatricSpeciationModel:
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff ** 2))
         scaled_sigma_mut = model_IR12.params['sigma_mut'] * np.sqrt(model_IR12.params['mut_prob'])
-        assert trait_rms == pytest.approx(scaled_sigma_mut, 0.1)
+        assert trait_rms == pytest.approx(scaled_sigma_mut, 0.1, 0.02)
 
         # test reset fitness data
         for k in ['fitness', 'n_offspring']:
