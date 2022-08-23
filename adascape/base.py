@@ -16,7 +16,7 @@ class SpeciationModelBase:
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 on_extinction='warn', distance_method='ward', distance_value=0.5):
+                 on_extinction='warn', distance_metric='ward', distance_value=0.5):
         """
         Initialization of based model.
 
@@ -26,6 +26,10 @@ class SpeciationModelBase:
             Grid x-coordinates.
         grid_y : array_like
             Grid y-coordinates.
+        init_trait_funcs : dict
+            with callables to generate initial values of each trait for each individual.
+        opt_trait_funcs : dict
+            with callables to compute optimal trait values of each trait for each individual.
         init_abundance : int
             Total number of individuals generated as the initial population.
         lifespan : float, optional
@@ -53,6 +57,15 @@ class SpeciationModelBase:
             a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
             stops) or 'ignore' silently continues the simulation
             doing nothing (no population).
+        distance_metric : str, optional
+            distance metric to calculate pairwise distance between individuals
+            in n-dimensional trait space. For further details see documentation
+            of method scipy.cluster.hierarchy.fclusterdata.
+            default = 'ward'
+        distance_value : float, optional
+            distance threshold to construct clusters. For further details see documentation
+            of method scipy.cluster.hierarchy.fclusterdata.
+            default  = 0.5
         """
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -76,13 +89,12 @@ class SpeciationModelBase:
         self._truncnorm = stats.truncnorm
         self._truncnorm.random_state = self._rng
 
-        #TODO: expose distance_value and distance_method as options to users
         self._params = {
             'lifespan': lifespan,
             'random_seed': random_seed,
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
-            'distance_method': distance_method,
+            'distance_metric': distance_metric,
             'distance_value': distance_value
         }
         self._env_field_bounds = None
@@ -132,7 +144,7 @@ class SpeciationModelBase:
             )
 
         clus = fclusterdata(init_traits,
-                            method=self._params['distance_method'],
+                            method=self._params['distance_metric'],
                             t=self._params['distance_value'],
                             criterion='distance')
 
@@ -167,7 +179,7 @@ class SpeciationModelBase:
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
         clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
         clus = fclusterdata(clus_dat,
-                            method=self._params['distance_method'],
+                            method=self._params['distance_metric'],
                             t=self._params['distance_value'],
                             criterion='distance')
         return clus + current_ancestor_id.max(), current_ancestor_id
@@ -396,7 +408,7 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_method='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
                  sigma_mut=0.05, mut_prob=0.05):
         """Initialization of speciation model without competition.
@@ -425,7 +437,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
-                         distance_method=distance_method,
+                         distance_metric=distance_metric,
                          distance_value=distance_value)
 
         # default parameter values
@@ -438,7 +450,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'mut_prob': mut_prob,
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
-            'distance_method': distance_method,
+            'distance_metric': distance_metric,
             'distance_value': distance_value
         })
 
@@ -604,7 +616,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_method='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
                  sigma_comp_dist=0.19):
@@ -641,7 +653,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
-                         distance_method=distance_method,
+                         distance_metric=distance_metric,
                          distance_value=distance_value)
 
         self._params.update({
@@ -656,7 +668,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_comp_dist': sigma_comp_dist,
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
-            'distance_method': distance_method,
+            'distance_metric': distance_metric,
             'distance_value': distance_value
         })
 

@@ -7,9 +7,6 @@ from adascape.base import DD03SpeciationModel
 from orographic_precipitation.fastscape_ext import OrographicPrecipitation, OrographicDrainageDischarge
 
 
-#TODO: expose distance_value and distance_method as options to users
-
-
 @xs.process
 class Speciation:
     """
@@ -22,6 +19,8 @@ class Speciation:
     init_abundance = xs.variable(description="initial number of individuals", static=True)
     random_seed = xs.variable(default=None, description="random number generator seed", static=True)
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
+    distance_metric = xs.variable(default='ward', description="distance metric used to construct taxon clusters")
+    distance_value = xs.variable(default=0.5, description="distance threshold used to construct taxon clusters")
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
@@ -97,9 +96,9 @@ class IR12Speciation(Speciation):
     """
     nb_radius = xs.variable(description="fixed neighborhood radius")
     car_cap = xs.variable(description="carrying capacity within a neighborhood")
-    sigma_mov = xs.variable(description="controls dispersal magnitude")
-    sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_env_trait = xs.variable(description="controls strength abiotic filtering")
+    sigma_mov = xs.variable(description="controls dispersal variability")
+    sigma_mut = xs.variable(description="controls mutation variability")
+    sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
 
     abundance = xs.variable(intent="out", description="abundance")
@@ -117,6 +116,8 @@ class IR12Speciation(Speciation):
             "sigma_mut": self.sigma_mut,
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
+            "distance_metric": self.distance_metric,
+            "distance_value": self.distance_value
         }
 
     def initialize(self):
@@ -161,13 +162,13 @@ class DD03Speciation(Speciation):
     birth_rate = xs.variable(description="birth rate of individuals")
     movement_rate = xs.variable(description="movement/dispersion rate of individuals")
     car_cap_max = xs.variable(description="maximum carrying capacity")
-    sigma_env_trait = xs.variable(description="controls strength abiotic filtering")
+    sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
-    sigma_mut = xs.variable(description="controls mutation magnitude")
-    sigma_mov = xs.variable(description="controls movement/dispersal magnitude")
-    sigma_comp_trait = xs.variable(description="controls competition strength among individuals and its based on trait")
-    sigma_comp_dist = xs.variable(description="controls competition strength among individuals and its based on "
-                                              "spatial distance")
+    sigma_mut = xs.variable(description="controls mutation variability")
+    sigma_mov = xs.variable(description="controls movement/dispersal variability")
+    sigma_comp_trait = xs.variable(description="controls competition strength based on trait among individuals")
+    sigma_comp_dist = xs.variable(description="controls competition strength based on spatial "
+                                              "distance among individuals")
     abundance = xs.variable(intent="out", description="abundance of individuals")
 
     def _get_model_params(self):
@@ -181,7 +182,9 @@ class DD03Speciation(Speciation):
             'sigma_mov': self.sigma_mov,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed
+            "random_seed": self.random_seed,
+            "distance_metric": self.distance_metric,
+            "distance_value": self.distance_value
         }
 
     def initialize(self):
