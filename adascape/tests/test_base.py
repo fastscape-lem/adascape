@@ -445,3 +445,27 @@ class TestParapatricSpeciationModel:
         assert repr(model_DD03) == model_DD03_repr
         assert repr(initialized_model_DD03) == initialized_model_DD03_repr
 
+    @pytest.mark.parametrize('taxon_def', ['traits', 'ancestry*traits', 'ancestry+traits'])
+    def test_taxon_def(self, grid, trait_funcs, taxon_def, num_gen=10, dt=1):
+        X, Y = grid
+        init_trait_funcs, opt_trait_funcs = trait_funcs
+
+        with pytest.raises(ValueError, match="invalid value"):
+            IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, taxon_def='invalid')
+
+        model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, taxon_def=taxon_def)
+        model.initialize()
+
+        dfs = []
+        for step in range(num_gen):
+            model.evaluate_fitness(dt)
+            dfs.append(model.to_dataframe())
+            model.update_individuals(dt)
+
+        taxon_richness = (pd.concat(dfs)
+                          .reset_index(drop=True)
+                          .groupby('time')
+                          .apply(lambda x: x.taxon_id.unique().size))
+
+        assert taxon_richness.iloc[0] == 1
+        assert taxon_richness.iloc[-1] > 1

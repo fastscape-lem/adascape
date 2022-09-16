@@ -16,7 +16,7 @@ class SpeciationModelBase:
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5):
+                 on_extinction='warn', distance_metric='ward', distance_value=0.5, taxon_def='ancestry*traits'):
         """
         Initialization of based model.
 
@@ -66,6 +66,11 @@ class SpeciationModelBase:
             distance threshold to construct clusters. For further details see documentation
             of method scipy.cluster.hierarchy.fclusterdata.
             default  = 0.5
+        taxon_def: {'traits', 'ancestry*traits', 'ancestry+traits'}
+                   Criteria use to define taxon. By only using the traits of the individuals
+                   or
+
+
         """
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -110,6 +115,16 @@ class SpeciationModelBase:
         self.n_traits = len(self._init_trait_funcs)
         assert len(self._init_trait_funcs) == len(self._opt_trait_funcs)
 
+        # for test of taxon definition
+        valid_taxon_def = ('traits', 'ancestry*traits', 'ancestry+traits')
+        if taxon_def not in valid_taxon_def:
+            raise ValueError(
+                "invalid value found for 'valid_taxon_def' parameter. "
+                "Found {!r}, must be one of {!r}"
+                    .format(taxon_def, valid_taxon_def)
+            )
+        self.taxon_def = taxon_def
+
     def initialize(self, x_range=None, y_range=None):
         """
         Initialization of a group of individuals with randomly distributed traits,
@@ -140,8 +155,8 @@ class SpeciationModelBase:
 
         # array of shape (n_individuals, n_traits)
         init_traits = np.column_stack(
-                [func(self._init_abundance) for func in self._init_trait_funcs.values()]
-            )
+            [func(self._init_abundance) for func in self._init_trait_funcs.values()]
+        )
 
         clus = fclusterdata(init_traits,
                             method=self._params['distance_metric'],
@@ -162,9 +177,9 @@ class SpeciationModelBase:
 
     def _compute_taxon_ids(self):
         """
-        Method to define taxa based on individual's traits and their common ancestor
-        using a hierarchical clustering algorithm from scipy.spatial.hierarchy using
-        a distance methods (ward distance by default) and a specific distance value
+        Method to define taxa based on individual's traits and their shared common ancestry
+        using a hierarchical clustering algorithm from scipy.spatial.hierarchy and
+        distance methods (ward distance by default) with specified distance value
         to separate the clusters.
 
         Returns
@@ -177,12 +192,37 @@ class SpeciationModelBase:
         else:
             new_id_key = 'ancestor_id'
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
-        clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
-        clus = fclusterdata(clus_dat,
-                            method=self._params['distance_metric'],
-                            t=self._params['distance_value'],
-                            criterion='distance')
-        return clus + current_ancestor_id.max(), current_ancestor_id
+
+        if self.taxon_def == 'traits':
+            clus_dat = np.column_stack([self._individuals['trait']])
+            clus = fclusterdata(clus_dat,
+                                method=self._params['distance_metric'],
+                                t=self._params['distance_value'],
+                                criterion='distance')
+            new_taxon_id = clus + current_ancestor_id.max()
+        if self.taxon_def == 'ancestry*traits':
+            clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
+            clus = fclusterdata(clus_dat,
+                                method=self._params['distance_metric'],
+                                t=self._params['distance_value'],
+                                criterion='distance')
+            new_taxon_id = clus + current_ancestor_id.max()
+        if self.taxon_def == 'ancestry+traits':
+            clus = (pd.DataFrame(self._individuals['trait'])
+                      .assign(ancestor_id=current_ancestor_id)
+                      .groupby('ancestor_id')
+                      .apply(lambda x: fclusterdata(x.drop(columns='ancestor_id'), method=self._params['distance_metric'],
+                                                    t=self._params['distance_value'], criterion='distance'))
+                      .rename('cluster_id')
+                      )
+            new_taxon_id = np.array([])
+            max_clus = current_ancestor_id.max()
+            for anc in clus:
+                taxon_one_anc = anc + max_clus
+                new_taxon_id = np.append(new_taxon_id, taxon_one_anc)
+                max_clus = np.max(taxon_one_anc)
+
+        return new_taxon_id, current_ancestor_id
 
     @property
     def params(self):
@@ -410,7 +450,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
-                 sigma_mut=0.05, mut_prob=0.05):
+                 sigma_mut=0.05, mut_prob=0.05, taxon_def='ancestry*traits'):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -438,7 +478,8 @@ class IR12SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value)
+                         distance_value=distance_value,
+                         taxon_def=taxon_def)
 
         # default parameter values
         self._params.update({
@@ -566,20 +607,20 @@ class IR12SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_individuals = {k: np.array([])
-                              for k in ('x', 'y', 'trait')}
+                               for k in ('x', 'y', 'trait')}
             new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
         else:
             # generate offspring
             new_individuals = {k: np.repeat(self._individuals[k], n_offspring)
-                              for k in ('x', 'y')}
+                               for k in ('x', 'y')}
             new_individuals['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
             # mutate offspring
             to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < mut_prob
             for i in range(new_individuals['trait'].shape[1]):
                 new_individuals['trait'][:, i] = np.where(to_mutate,
-                                                         self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
-                                                         new_individuals['trait'][:, i])
+                                                          self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
+                                                          new_individuals['trait'][:, i])
 
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
@@ -619,7 +660,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                  on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
-                 sigma_comp_dist=0.19):
+                 sigma_comp_dist=0.19, taxon_def='ancestry*traits'):
         """
         Initialization of speciation model with competition.
 
@@ -654,7 +695,8 @@ class DD03SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value)
+                         distance_value=distance_value,
+                         taxon_def=taxon_def)
 
         self._params.update({
             'birth_rate': birth_rate,
@@ -745,7 +787,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_individuals = {k: np.array([])
-                              for k in ('x', 'y', 'trait')}
+                               for k in ('x', 'y', 'trait')}
             new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
         else:
             events_i = self._individuals['events_i']
@@ -763,7 +805,8 @@ class DD03SpeciationModel(SpeciationModelBase):
             offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
             for i in range(extant['trait'].shape[1]):
                 offspring['trait'][:, i] = np.where(to_mutate,
-                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i], sigma_mut),
+                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i],
+                                                                       sigma_mut),
                                                     self._individuals['trait'][events_i == 'B', i])
 
             # Movement
@@ -846,10 +889,10 @@ class DD03SpeciationModel(SpeciationModelBase):
         delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
         env_fitness = np.prod(delta_env_trait, axis=1)
         # global carrying capacity
-        a = self.abundance/self._params['car_cap_max']
+        a = self.abundance / self._params['car_cap_max']
         # local carrying capacity
         k_eff = self._params['car_cap_max'] * env_fitness
         b = n_eff / k_eff
-        net_gain = b*a
-        net_loss = b+a
+        net_gain = b * a
+        net_loss = b + a
         return net_gain, net_loss

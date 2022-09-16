@@ -45,7 +45,7 @@ class PTreeAccessor:
 
         return node_type
 
-    def extract_taxon_summary(self):
+    def extract_taxon_summary(self, min_abund=None):
         """
         Construct a dataframe with information on node type and summary
         statistics for each taxon based on the results of Speciation model.
@@ -80,11 +80,13 @@ class PTreeAccessor:
         dtf_out['taxon_id'] = dtf_out['taxon_id'].astype(int).astype(str)
         dtf_out['ancestor_id'] = dtf_out['ancestor_id'].astype(int).astype(str)
 
+        if min_abund is not None:
+            dtf_out = dtf_out.loc[dtf_out.abundance >= min_abund]
         return dtf_out
 
     def to_dendropy_tree(self, taxon_annotations=[], node_annotations=[],
                          branch_lengths=True, branch_length_col='time',
-                         ):
+                         min_abund=None):
         """
         Turn a pandas dataframe with tree information (node type, i.e. root, node and leaf) into a dendropy tree.
         Adapted from phylopandas project
@@ -111,7 +113,7 @@ class PTreeAccessor:
                                                                          repr(value_par).strip('[]'))
                             )
 
-        dtf = self.extract_taxon_summary()
+        dtf = self.extract_taxon_summary(min_abund=min_abund)
 
         # Construct a list of nodes from dataframe.
         taxon_namespace = dendropy.TaxonNamespace()
