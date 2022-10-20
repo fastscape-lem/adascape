@@ -19,8 +19,10 @@ class Speciation:
     init_abundance = xs.variable(description="initial number of individuals", static=True)
     random_seed = xs.variable(default=None, description="random number generator seed", static=True)
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
-    distance_metric = xs.variable(default='ward', description="distance metric used to construct taxon clusters")
+    distance_metric = xs.variable(default='ward', description="distance metric used to construct taxon clusters "
+                                                              "for hier_clus")
     distance_value = xs.variable(default=0.5, description="distance threshold used to construct taxon clusters")
+    taxon_def = xs.variable(default='spec_clus', description="Method use to define a taxon")
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
@@ -424,10 +426,10 @@ nocomp_adaspec_model = basic_model.update_processes(
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
      'life_env': CompoundEnvironment,
-     'elevation': ElevationEnvField,
-     'precip': PrecipitationField,
+     'elev_field': ElevationEnvField,
+     'prec_field': PrecipitationField,
      'random': RandomSeedFederation,
-     'precipitation': OrographicPrecipitation,
+     'orographic': OrographicPrecipitation,
      'drainage': OrographicDrainageDischarge}
 )
 
@@ -436,10 +438,10 @@ wcomp_adaspec_model_model = basic_model.update_processes(
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
      'life_env': CompoundEnvironment,
-     'elevation': ElevationEnvField,
-     'precip': PrecipitationField,
+     'elev_field': ElevationEnvField,
+     'prec_field': PrecipitationField,
      'random': RandomSeedFederation,
-     'precipitation': OrographicPrecipitation,
+     'orographic': OrographicPrecipitation,
      'drainage': OrographicDrainageDischarge
      }
 )

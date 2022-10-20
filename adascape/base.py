@@ -68,7 +68,9 @@ class SpeciationModelBase:
             of method scipy.cluster.hierarchy.fclusterdata.
             default  = 0.5
         taxon_def: {'hier_clus', 'spec_clus'}
-                   Criteria use to define a taxon,  default 'spec_clus'
+                   Method use to define a taxon based on individual's traits
+                   and their shared common ancestry, using a hierarchical clustering 'hier_clus'
+                   of a spectral clustering 'spec_clus', default 'spec_clus'
         """
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -98,7 +100,8 @@ class SpeciationModelBase:
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'distance_value': distance_value,
+            'taxon_def': taxon_def
         }
         self._env_field_bounds = None
         self._rescale_rates = rescale_rates
@@ -121,7 +124,6 @@ class SpeciationModelBase:
                 "Found {!r}, must be one of {!r}"
                     .format(taxon_def, valid_taxon_def)
             )
-        self.taxon_def = taxon_def
 
     def initialize(self, x_range=None, y_range=None):
         """
@@ -191,16 +193,16 @@ class SpeciationModelBase:
         else:
             new_id_key = 'ancestor_id'
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
+        max_clus = self._individuals['taxon_id'].max()
 
-        if self.taxon_def == 'hier_clus':
+        if self.params['taxon_def'] == 'hier_clus':
             clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id/current_ancestor_id.max()])
             clus = fclusterdata(clus_dat,
                                 method=self._params['distance_metric'],
                                 t=self._params['distance_value'],
                                 criterion='distance')
-            new_taxon_id = clus + current_ancestor_id.max()
-        elif self.taxon_def == 'spec_clus':
-            max_clus = current_ancestor_id.max()
+            new_taxon_id = clus + max_clus
+        elif self.params['taxon_def'] == 'spec_clus':
             new_taxon_id = np.zeros_like(current_ancestor_id)
             for ans in np.unique(current_ancestor_id):
                 ans_indx = np.where(current_ancestor_id==ans)[0]
@@ -268,6 +270,8 @@ class SpeciationModelBase:
                     labels[labels == 0] = 1
                 if count2 < split_size//2:
                     labels[labels == 1] = 0
+                if np.all(labels.astype(int) == 1):
+                    labels = np.zeros(clus_data.shape[0])
             else:
                 labels = np.zeros(clus_data.shape[0])
         else:
@@ -500,7 +504,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
-                 sigma_mut=0.05, mut_prob=0.05, taxon_def='ancestry*traits'):
+                 sigma_mut=0.05, mut_prob=0.05, taxon_def='spec_clus'):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -710,7 +714,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                  on_extinction='warn', distance_metric='ward', distance_value=0.5,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
-                 sigma_comp_dist=0.19, taxon_def='ancestry*traits'):
+                 sigma_comp_dist=0.19, taxon_def='spec_clus'):
         """
         Initialization of speciation model with competition.
 

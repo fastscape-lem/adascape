@@ -23,7 +23,8 @@ def params_IR12():
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
-        'on_extinction': 'ignore'
+        'on_extinction': 'ignore',
+        'taxon_def': 'hier_clus'
     }
 
 
@@ -44,8 +45,8 @@ def params_DD03():
         'car_cap_max': 100,
         'sigma_comp_trait': 0.9,
         'sigma_comp_dist': 0.2,
-        'on_extinction': 'warn'
-
+        'on_extinction': 'warn',
+        'taxon_def': 'hier_clus'
     }
 
 
@@ -116,6 +117,7 @@ def model_IR12_repr():
         on_extinction: ignore
         distance_metric: ward
         distance_value: 0.5
+        taxon_def: hier_clus
         nb_radius: 5
         car_cap: 5
         sigma_env_trait: 0.5
@@ -136,6 +138,7 @@ def initialized_model_IR12_repr():
         on_extinction: ignore
         distance_metric: ward
         distance_value: 0.5
+        taxon_def: hier_clus
         nb_radius: 5
         car_cap: 5
         sigma_env_trait: 0.5
@@ -156,6 +159,7 @@ def model_DD03_repr():
         on_extinction: warn
         distance_metric: ward
         distance_value: 0.5
+        taxon_def: hier_clus
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
@@ -179,6 +183,7 @@ def initialized_model_DD03_repr():
         on_extinction: warn
         distance_metric: ward
         distance_value: 0.5
+        taxon_def: hier_clus
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
@@ -445,7 +450,7 @@ class TestParapatricSpeciationModel:
         assert repr(model_DD03) == model_DD03_repr
         assert repr(initialized_model_DD03) == initialized_model_DD03_repr
 
-    @pytest.mark.parametrize('taxon_def', ['traits', 'ancestry*traits', 'ancestry+traits'])
+    @pytest.mark.parametrize('taxon_def', ['spec_clus', 'hier_clus'])
     def test_taxon_def(self, grid, trait_funcs, taxon_def, num_gen=10, dt=1):
         X, Y = grid
         init_trait_funcs, opt_trait_funcs = trait_funcs
@@ -468,4 +473,4 @@ class TestParapatricSpeciationModel:
                           .apply(lambda x: x.taxon_id.unique().size))
 
         assert taxon_richness.iloc[0] == 1
-        assert taxon_richness.iloc[-1] > 1
+        assert taxon_richness.iloc[-1] >= 1
