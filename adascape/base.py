@@ -158,10 +158,19 @@ class SpeciationModelBase:
             [func(self._init_abundance) for func in self._init_trait_funcs.values()]
         )
 
-        clus = fclusterdata(init_traits,
-                            method=self._params['distance_metric'],
-                            t=self._params['distance_value'],
-                            criterion='distance')
+        if self.params['taxon_def'] == 'hier_clus':
+            clus = fclusterdata(init_traits,
+                                method=self._params['distance_metric'],
+                                t=self._params['distance_value'],
+                                criterion='distance')
+            taxon_id = clus.copy()
+            ancestor_id = clus - 1
+
+        elif self.params['taxon_def'] == 'spec_clus':
+            clus = self._spect_clus(init_traits,
+                                    taxon_treshold=self._params['distance_value'])
+            taxon_id = clus + 1
+            ancestor_id = clus.copy()
 
         population = {'step': 0,
                       'time': 0.,
@@ -169,8 +178,8 @@ class SpeciationModelBase:
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
-                      'taxon_id': clus,
-                      'ancestor_id': clus - 1,
+                      'taxon_id': taxon_id,
+                      'ancestor_id': ancestor_id,
                       'n_offspring': np.zeros(init_traits.shape[0])
                       }
         self._individuals.update(population)
@@ -251,7 +260,10 @@ class SpeciationModelBase:
 
             sigma = np.std(D2Mat.flatten())
             mean = np.mean(D2Mat.flatten())
-            W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity
+            if sigma <= 0:
+                W = np.exp(-D2Mat)  # Exponential similarity function
+            else:
+                W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity function
             W[D2Mat > taxon_treshold] = 0  # rule to connect individuals as well as ancestor
 
             D = np.diag(np.sum(W, axis=1))
