@@ -17,7 +17,7 @@ class SpeciationModelBase:
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5, taxon_def='spec_clus'):
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05, taxon_def='spec_clus'):
         """
         Initialization of based model.
 
@@ -63,7 +63,7 @@ class SpeciationModelBase:
             in n-dimensional trait space. For further details see documentation
             of method scipy.cluster.hierarchy.fclusterdata.
             default = 'ward'
-        distance_value : float, optional
+        taxon_threshold : float, optional
             distance threshold to construct clusters. For further details see documentation
             of method scipy.cluster.hierarchy.fclusterdata.
             default  = 0.5
@@ -100,7 +100,7 @@ class SpeciationModelBase:
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value,
+            'taxon_threshold': taxon_threshold,
             'taxon_def': taxon_def
         }
         self._env_field_bounds = None
@@ -161,14 +161,14 @@ class SpeciationModelBase:
         if self.params['taxon_def'] == 'hier_clus':
             clus = fclusterdata(init_traits,
                                 method=self._params['distance_metric'],
-                                t=self._params['distance_value'],
+                                t=self._params['taxon_threshold'],
                                 criterion='distance')
             taxon_id = clus.copy()
             ancestor_id = clus - 1
 
         elif self.params['taxon_def'] == 'spec_clus':
             clus = self._spect_clus(init_traits,
-                                    taxon_treshold=self._params['distance_value'])
+                                    taxon_threshold=self._params['taxon_threshold'])
             taxon_id = clus + 1
             ancestor_id = clus.copy()
 
@@ -208,7 +208,7 @@ class SpeciationModelBase:
             clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id/current_ancestor_id.max()])
             clus = fclusterdata(clus_dat,
                                 method=self._params['distance_metric'],
-                                t=self._params['distance_value'],
+                                t=self._params['taxon_threshold'],
                                 criterion='distance')
             new_taxon_id = clus + max_clus
         elif self.params['taxon_def'] == 'spec_clus':
@@ -216,7 +216,7 @@ class SpeciationModelBase:
             for ans in np.unique(current_ancestor_id):
                 ans_indx = np.where(current_ancestor_id==ans)[0]
                 clus = self._spect_clus(self._individuals['trait'][ans_indx],
-                                        taxon_treshold=self._params['distance_value'])
+                                        taxon_threshold=self._params['taxon_threshold'])
                 if max_clus < np.max(clus):
                     new_clus = clus + 1
                     new_taxon_id[ans_indx] = new_clus.astype(int)
@@ -229,7 +229,7 @@ class SpeciationModelBase:
             new_taxon_id = np.empty_like(current_ancestor_id)
         return new_taxon_id, current_ancestor_id
 
-    def _spect_clus(self, clus_data, taxon_treshold=0.1, split_size=10):
+    def _spect_clus(self, clus_data, taxon_threshold=0.05, split_size=10):
         """
         Spectral clustering algorithm based on von Luxburg (2007), which we modified to:
             1) only divide groups of individuals larger than "split_size",
@@ -252,25 +252,23 @@ class SpeciationModelBase:
             with taxon id
 
         """
-        if clus_data.shape[0] > split_size:
-            try:
-                D2Mat = dist.squareform(dist.pdist(clus_data))
-            except:
-                D2Mat = dist.squareform(dist.pdist(clus_data[:, np.newaxis]))
+        try:
+            D2Mat = dist.squareform(dist.pdist(clus_data))
+        except:
+            D2Mat = dist.squareform(dist.pdist(clus_data[:, np.newaxis]))
 
-            sigma = np.std(D2Mat.flatten())
-            mean = np.mean(D2Mat.flatten())
-            if sigma <= 0:
-                W = np.exp(-D2Mat)  # Exponential similarity function
-            else:
-                W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity function
-            W[D2Mat > taxon_treshold] = 0  # rule to connect individuals as well as ancestor
+        sigma = np.std(D2Mat.flatten())
+        mean = np.mean(D2Mat.flatten())
+
+        if clus_data.shape[0] > split_size and sigma > taxon_threshold:
+            W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity function
+            W[D2Mat > taxon_threshold] = 0  # rule to connect individuals as well as ancestor
 
             D = np.diag(np.sum(W, axis=1))
-            L = D - W
-            E, U = np.linalg.eig(L)
-            E = np.real(E)  # remove tiny imaginary numbers
-            U = np.real(U)  # remove tiny imaginary numbers
+            L = D - W  # L is a real symmetric (see Proposition 1 Luxburg 2007)
+            E, U = np.linalg.eigh(L)
+            E = np.real(E)  # remove tiny imaginary numbers (should be tiny because L is positive semi-definite by Theorem)
+            U = np.real(U)  # remove tiny imaginary numbers (should be because for real symmetric matrices, U is an orthonormal matrix)
             E[np.isclose(E, np.zeros(len(E)))] = 0  # remove tiny numbers that are too close to zeros
             n_comp = np.sum(E == 0)
             if n_comp > 1:
@@ -514,7 +512,7 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
                  sigma_mut=0.05, mut_prob=0.05, taxon_def='spec_clus'):
         """Initialization of speciation model without competition.
@@ -544,7 +542,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value,
+                         taxon_threshold=taxon_threshold,
                          taxon_def=taxon_def)
 
         # default parameter values
@@ -558,7 +556,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'taxon_threshold': taxon_threshold
         })
 
     def _get_n_gen(self, dt):
@@ -723,7 +721,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
                  sigma_comp_dist=0.19, taxon_def='spec_clus'):
@@ -761,7 +759,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value,
+                         taxon_threshold=taxon_threshold,
                          taxon_def=taxon_def)
 
         self._params.update({
@@ -777,7 +775,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'taxon_threshold': taxon_threshold
         })
 
     def evaluate_fitness(self, dt):

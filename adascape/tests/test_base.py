@@ -16,7 +16,7 @@ def params_IR12():
         'random_seed': 1234,
         'always_direct_parent': True,
         'distance_metric': 'ward',
-        'distance_value': 0.5,
+        'taxon_threshold': 0.05,
         'nb_radius': 5,
         'car_cap': 5,
         'sigma_env_trait': 0.5,
@@ -35,7 +35,7 @@ def params_DD03():
         'random_seed': 1234,
         'always_direct_parent': True,
         'distance_metric': 'ward',
-        'distance_value': 0.5,
+        'taxon_threshold': 0.05,
         'sigma_env_trait': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
@@ -116,7 +116,7 @@ def model_IR12_repr():
         always_direct_parent: True
         on_extinction: ignore
         distance_metric: ward
-        distance_value: 0.5
+        taxon_threshold: 0.05
         taxon_def: hier_clus
         nb_radius: 5
         car_cap: 5
@@ -137,7 +137,7 @@ def initialized_model_IR12_repr():
         always_direct_parent: True
         on_extinction: ignore
         distance_metric: ward
-        distance_value: 0.5
+        taxon_threshold: 0.05
         taxon_def: hier_clus
         nb_radius: 5
         car_cap: 5
@@ -158,7 +158,7 @@ def model_DD03_repr():
         always_direct_parent: True
         on_extinction: warn
         distance_metric: ward
-        distance_value: 0.5
+        taxon_threshold: 0.05
         taxon_def: hier_clus
         birth_rate: 1
         movement_rate: 5
@@ -182,7 +182,7 @@ def initialized_model_DD03_repr():
         always_direct_parent: True
         on_extinction: warn
         distance_metric: ward
-        distance_value: 0.5
+        taxon_threshold: 0.05
         taxon_def: hier_clus
         birth_rate: 1
         movement_rate: 5

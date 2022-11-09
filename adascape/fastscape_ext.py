@@ -21,7 +21,7 @@ class Speciation:
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
     distance_metric = xs.variable(default='ward', description="distance metric used to construct taxon clusters "
                                                               "for hier_clus")
-    distance_value = xs.variable(default=0.5, description="distance threshold used to construct taxon clusters")
+    taxon_threshold = xs.variable(default=0.05, description="threshold used to construct taxon clusters")
     taxon_def = xs.variable(default='spec_clus', description="Method use to define a taxon")
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
@@ -119,7 +119,7 @@ class IR12Speciation(Speciation):
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
             "distance_metric": self.distance_metric,
-            "distance_value": self.distance_value
+            "taxon_threshold": self.taxon_threshold
         }
 
     def initialize(self):
@@ -186,7 +186,7 @@ class DD03Speciation(Speciation):
             'sigma_comp_dist': self.sigma_comp_dist,
             "random_seed": self.random_seed,
             "distance_metric": self.distance_metric,
-            "distance_value": self.distance_value
+            "taxon_threshold": self.taxon_threshold
         }
 
     def initialize(self):
