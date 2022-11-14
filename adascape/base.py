@@ -6,6 +6,7 @@ import scipy.stats as stats
 import scipy.spatial as spatial
 import scipy.spatial.distance as dist
 from scipy.cluster.hierarchy import fclusterdata
+from scipy.cluster.vq import kmeans2
 
 
 class SpeciationModelBase:
@@ -16,7 +17,7 @@ class SpeciationModelBase:
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5):
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05, taxon_def='spec_clus'):
         """
         Initialization of based model.
 
@@ -62,10 +63,14 @@ class SpeciationModelBase:
             in n-dimensional trait space. For further details see documentation
             of method scipy.cluster.hierarchy.fclusterdata.
             default = 'ward'
-        distance_value : float, optional
+        taxon_threshold : float, optional
             distance threshold to construct clusters. For further details see documentation
             of method scipy.cluster.hierarchy.fclusterdata.
             default  = 0.5
+        taxon_def: {'hier_clus', 'spec_clus'}
+                   Method use to define a taxon based on individual's traits
+                   and their shared common ancestry, using a hierarchical clustering 'hier_clus'
+                   of a spectral clustering 'spec_clus', default 'spec_clus'
         """
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -95,7 +100,8 @@ class SpeciationModelBase:
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'taxon_threshold': taxon_threshold,
+            'taxon_def': taxon_def
         }
         self._env_field_bounds = None
         self._rescale_rates = rescale_rates
@@ -109,6 +115,15 @@ class SpeciationModelBase:
         # number of traits
         self.n_traits = len(self._init_trait_funcs)
         assert len(self._init_trait_funcs) == len(self._opt_trait_funcs)
+
+        # for test of taxon definition
+        valid_taxon_def = ('spec_clus', 'hier_clus')
+        if taxon_def not in valid_taxon_def:
+            raise ValueError(
+                "invalid value found for 'valid_taxon_def' parameter. "
+                "Found {!r}, must be one of {!r}"
+                    .format(taxon_def, valid_taxon_def)
+            )
 
     def initialize(self, x_range=None, y_range=None):
         """
@@ -140,13 +155,22 @@ class SpeciationModelBase:
 
         # array of shape (n_individuals, n_traits)
         init_traits = np.column_stack(
-                [func(self._init_abundance) for func in self._init_trait_funcs.values()]
-            )
+            [func(self._init_abundance) for func in self._init_trait_funcs.values()]
+        )
 
-        clus = fclusterdata(init_traits,
-                            method=self._params['distance_metric'],
-                            t=self._params['distance_value'],
-                            criterion='distance')
+        if self.params['taxon_def'] == 'hier_clus':
+            clus = fclusterdata(init_traits,
+                                method=self._params['distance_metric'],
+                                t=self._params['taxon_threshold'],
+                                criterion='distance')
+            taxon_id = clus.copy()
+            ancestor_id = clus - 1
+
+        elif self.params['taxon_def'] == 'spec_clus':
+            clus = self._spect_clus(init_traits,
+                                    taxon_threshold=self._params['taxon_threshold'])
+            taxon_id = clus + 1
+            ancestor_id = clus.copy()
 
         population = {'step': 0,
                       'time': 0.,
@@ -154,18 +178,19 @@ class SpeciationModelBase:
                       'x': self._sample_in_range(x_range),
                       'y': self._sample_in_range(y_range),
                       'trait': init_traits,
-                      'taxon_id': clus,
-                      'ancestor_id': clus - 1,
+                      'taxon_id': taxon_id,
+                      'ancestor_id': ancestor_id,
                       'n_offspring': np.zeros(init_traits.shape[0])
                       }
         self._individuals.update(population)
 
     def _compute_taxon_ids(self):
         """
-        Method to define taxa based on individual's traits and their common ancestor
-        using a hierarchical clustering algorithm from scipy.spatial.hierarchy using
-        a distance methods (ward distance by default) and a specific distance value
-        to separate the clusters.
+        Method to define taxa based on individual's traits and their shared common ancestry
+        using 1) a hierarchical clustering algorithm from scipy.spatial.hierarchy or
+        2) spectral clustering algorithm. For hierarchical clustering a distance value
+        and distance metric needs to be specified,the latter by default is set to 'ward' distance.
+        For spectral clustering only distance value needs to be specified.
 
         Returns
         -------
@@ -177,12 +202,91 @@ class SpeciationModelBase:
         else:
             new_id_key = 'ancestor_id'
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
-        clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id])
-        clus = fclusterdata(clus_dat,
-                            method=self._params['distance_metric'],
-                            t=self._params['distance_value'],
-                            criterion='distance')
-        return clus + current_ancestor_id.max(), current_ancestor_id
+        max_clus = self._individuals['taxon_id'].max()
+
+        if self.params['taxon_def'] == 'hier_clus':
+            clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id/current_ancestor_id.max()])
+            clus = fclusterdata(clus_dat,
+                                method=self._params['distance_metric'],
+                                t=self._params['taxon_threshold'],
+                                criterion='distance')
+            new_taxon_id = clus + max_clus
+        elif self.params['taxon_def'] == 'spec_clus':
+            new_taxon_id = np.zeros_like(current_ancestor_id)
+            for ans in np.unique(current_ancestor_id):
+                ans_indx = np.where(current_ancestor_id==ans)[0]
+                clus = self._spect_clus(self._individuals['trait'][ans_indx],
+                                        taxon_threshold=self._params['taxon_threshold'])
+                if max_clus < np.max(clus):
+                    new_clus = clus + 1
+                    new_taxon_id[ans_indx] = new_clus.astype(int)
+                elif max_clus >= np.max(clus):
+                    new_clus = clus + 1 + max_clus
+                    new_taxon_id[ans_indx] = new_clus.astype(int)
+                max_clus = np.max(new_clus).astype(int)
+
+        else:
+            new_taxon_id = np.empty_like(current_ancestor_id)
+        return new_taxon_id, current_ancestor_id
+
+    def _spect_clus(self, clus_data, taxon_threshold=0.05, split_size=10):
+        """
+        Spectral clustering algorithm based on von Luxburg (2007), which we modified to:
+            1) only divide groups of individuals larger than "split_size",
+            2) if division occurs only divide into a maximum of two clusters or  taxon_ids,
+            3) the minimum size of the divided clusters or taxon_ids must be half of split_size.
+
+        Ulrike von Luxburg (2007) A tutorial on spectral clustering.Statistics and Computing,
+        17(4):395-416. doi:10.1007/s11222-007-9033-z
+
+        Parameters
+        ----------
+        clus_data : array-like
+                    individual's trait data to be used in the clustering
+        split_size : int
+                    minimum number of individuals (observations) in cluster data to perform the clustering algorithm
+
+        Returns
+        -------
+        array-like of int
+            with taxon id
+
+        """
+        try:
+            D2Mat = dist.squareform(dist.pdist(clus_data))
+        except:
+            D2Mat = dist.squareform(dist.pdist(clus_data[:, np.newaxis]))
+
+        sigma = np.std(D2Mat.flatten())
+        mean = np.mean(D2Mat.flatten())
+
+        if clus_data.shape[0] > split_size and sigma > taxon_threshold:
+            W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity function
+            W[D2Mat > taxon_threshold] = 0  # rule to connect individuals as well as ancestor
+
+            D = np.diag(np.sum(W, axis=1))
+            L = D - W  # L is a real symmetric (see Proposition 1 Luxburg 2007)
+            E, U = np.linalg.eigh(L)
+            E = np.real(E)  # remove tiny imaginary numbers (should be tiny because L is positive semi-definite by Theorem)
+            U = np.real(U)  # remove tiny imaginary numbers (should be because for real symmetric matrices, U is an orthonormal matrix)
+            E[np.isclose(E, np.zeros(len(E)))] = 0  # remove tiny numbers that are too close to zeros
+            n_comp = np.sum(E == 0)
+            if n_comp > 1:
+                k = min(2, n_comp)
+                centroid, labels = kmeans2(U[:, :k], k=k, minit='points', seed=self._rng)
+                count1 = np.sum(labels == 0)
+                count2 = np.sum(labels == 1)
+                if count1 < split_size//2:
+                    labels[labels == 0] = 1
+                if count2 < split_size//2:
+                    labels[labels == 1] = 0
+                if np.all(labels.astype(int) == 1):
+                    labels = np.zeros(clus_data.shape[0])
+            else:
+                labels = np.zeros(clus_data.shape[0])
+        else:
+            labels = np.zeros(clus_data.shape[0])
+        return labels
 
     @property
     def params(self):
@@ -408,9 +512,9 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
-                 sigma_mut=0.05, mut_prob=0.05):
+                 sigma_mut=0.05, mut_prob=0.05, taxon_def='spec_clus'):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -438,7 +542,8 @@ class IR12SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value)
+                         taxon_threshold=taxon_threshold,
+                         taxon_def=taxon_def)
 
         # default parameter values
         self._params.update({
@@ -451,7 +556,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'taxon_threshold': taxon_threshold
         })
 
     def _get_n_gen(self, dt):
@@ -566,20 +671,20 @@ class IR12SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_individuals = {k: np.array([])
-                              for k in ('x', 'y', 'trait')}
+                               for k in ('x', 'y', 'trait')}
             new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
         else:
             # generate offspring
             new_individuals = {k: np.repeat(self._individuals[k], n_offspring)
-                              for k in ('x', 'y')}
+                               for k in ('x', 'y')}
             new_individuals['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
             # mutate offspring
             to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < mut_prob
             for i in range(new_individuals['trait'].shape[1]):
                 new_individuals['trait'][:, i] = np.where(to_mutate,
-                                                         self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
-                                                         new_individuals['trait'][:, i])
+                                                          self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
+                                                          new_individuals['trait'][:, i])
 
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
@@ -616,10 +721,10 @@ class DD03SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', distance_value=0.5,
+                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
-                 sigma_comp_dist=0.19):
+                 sigma_comp_dist=0.19, taxon_def='spec_clus'):
         """
         Initialization of speciation model with competition.
 
@@ -654,7 +759,8 @@ class DD03SpeciationModel(SpeciationModelBase):
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
                          distance_metric=distance_metric,
-                         distance_value=distance_value)
+                         taxon_threshold=taxon_threshold,
+                         taxon_def=taxon_def)
 
         self._params.update({
             'birth_rate': birth_rate,
@@ -669,7 +775,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
             'distance_metric': distance_metric,
-            'distance_value': distance_value
+            'taxon_threshold': taxon_threshold
         })
 
     def evaluate_fitness(self, dt):
@@ -745,7 +851,7 @@ class DD03SpeciationModel(SpeciationModelBase):
                               RuntimeWarning)
 
             new_individuals = {k: np.array([])
-                              for k in ('x', 'y', 'trait')}
+                               for k in ('x', 'y', 'trait')}
             new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
         else:
             events_i = self._individuals['events_i']
@@ -763,7 +869,8 @@ class DD03SpeciationModel(SpeciationModelBase):
             offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
             for i in range(extant['trait'].shape[1]):
                 offspring['trait'][:, i] = np.where(to_mutate,
-                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i], sigma_mut),
+                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i],
+                                                                       sigma_mut),
                                                     self._individuals['trait'][events_i == 'B', i])
 
             # Movement
@@ -846,10 +953,10 @@ class DD03SpeciationModel(SpeciationModelBase):
         delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
         env_fitness = np.prod(delta_env_trait, axis=1)
         # global carrying capacity
-        a = self.abundance/self._params['car_cap_max']
+        a = self.abundance / self._params['car_cap_max']
         # local carrying capacity
         k_eff = self._params['car_cap_max'] * env_fitness
         b = n_eff / k_eff
-        net_gain = b*a
-        net_loss = b+a
+        net_gain = b * a
+        net_loss = b + a
         return net_gain, net_loss
