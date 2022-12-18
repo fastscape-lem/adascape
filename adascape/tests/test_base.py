@@ -14,8 +14,8 @@ def params_IR12():
     return {
         'lifespan': 1,
         'random_seed': 1234,
+        'rho': 0,
         'always_direct_parent': True,
-        'distance_metric': 'ward',
         'taxon_threshold': 0.05,
         'nb_radius': 5,
         'car_cap': 5,
@@ -24,7 +24,7 @@ def params_IR12():
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
         'on_extinction': 'ignore',
-        'taxon_def': 'hier_clus'
+        'taxon_def': 'traits'
     }
 
 
@@ -33,8 +33,8 @@ def params_DD03():
     return {
         'lifespan': 1,
         'random_seed': 1234,
+        'rho': 0,
         'always_direct_parent': True,
-        'distance_metric': 'ward',
         'taxon_threshold': 0.05,
         'sigma_env_trait': 0.5,
         'sigma_mov': 4,
@@ -46,7 +46,7 @@ def params_DD03():
         'sigma_comp_trait': 0.9,
         'sigma_comp_dist': 0.2,
         'on_extinction': 'warn',
-        'taxon_def': 'hier_clus'
+        'taxon_def': 'traits'
     }
 
 
@@ -115,9 +115,9 @@ def model_IR12_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
-        distance_metric: ward
         taxon_threshold: 0.05
-        taxon_def: hier_clus
+        taxon_def: traits
+        rho: 0
         nb_radius: 5
         car_cap: 5
         sigma_env_trait: 0.5
@@ -136,9 +136,9 @@ def initialized_model_IR12_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
-        distance_metric: ward
         taxon_threshold: 0.05
-        taxon_def: hier_clus
+        taxon_def: traits
+        rho: 0
         nb_radius: 5
         car_cap: 5
         sigma_env_trait: 0.5
@@ -157,9 +157,9 @@ def model_DD03_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: warn
-        distance_metric: ward
         taxon_threshold: 0.05
-        taxon_def: hier_clus
+        taxon_def: traits
+        rho: 0
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
@@ -181,9 +181,9 @@ def initialized_model_DD03_repr():
         random_seed: 1234
         always_direct_parent: True
         on_extinction: warn
-        distance_metric: ward
         taxon_threshold: 0.05
-        taxon_def: hier_clus
+        taxon_def: traits
+        rho: 0
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
@@ -450,7 +450,7 @@ class TestParapatricSpeciationModel:
         assert repr(model_DD03) == model_DD03_repr
         assert repr(initialized_model_DD03) == initialized_model_DD03_repr
 
-    @pytest.mark.parametrize('taxon_def', ['spec_clus', 'hier_clus'])
+    @pytest.mark.parametrize('taxon_def', ['traits', 'traits_location'])
     def test_taxon_def(self, grid, trait_funcs, taxon_def, num_gen=10, dt=1):
         X, Y = grid
         init_trait_funcs, opt_trait_funcs = trait_funcs
