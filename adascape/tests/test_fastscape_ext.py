@@ -8,7 +8,7 @@ pytest.importorskip("fastscape")  # isort:skip
 from adascape.fastscape_ext import (IR12Speciation, DD03Speciation,
                                     CompoundEnvironment, ElevationEnvField, PrecipitationField,
                                     FastscapeElevationTrait, FastscapePrecipitationTrait,
-                                    nocomp_adaspec_model, wcomp_adaspec_model_model)
+                                    woc_adaspec_model, wic_adaspec_model)
 
 
 @pytest.fixture
@@ -26,8 +26,8 @@ def specDD03_process(trait_funcs):
         'rescale_rates': True,
         'sigma_comp_trait': 0.9,
         'sigma_comp_dist': 0.2,
-        'distance_metric': 'ward',
-        'taxon_threshold': 0.5
+        'taxon_threshold': 0.05,
+        'rho': 0
     }
 
     x = np.linspace(0, 20, 10)
@@ -51,8 +51,8 @@ def specIR12_process(trait_funcs):
         'sigma_mut': 0.5,
         'random_seed': 1234,
         'rescale_rates': True,
-        'distance_metric': 'ward',
-        'taxon_threshold': 0.05
+        'taxon_threshold': 0.05,
+        'rho': 0
     }
 
     x = np.linspace(0, 20, 10)
@@ -166,7 +166,7 @@ def test_compound_environment():
 
 
 def test_paraspec_model():
-    assert isinstance(nocomp_adaspec_model["life"], IR12Speciation)
-    assert isinstance(nocomp_adaspec_model["life_env"], CompoundEnvironment)
-    assert isinstance(wcomp_adaspec_model_model["life"], DD03Speciation)
-    assert isinstance(wcomp_adaspec_model_model["life_env"], CompoundEnvironment)
+    assert isinstance(woc_adaspec_model["life"], IR12Speciation)
+    assert isinstance(woc_adaspec_model["life_env"], CompoundEnvironment)
+    assert isinstance(wic_adaspec_model["life"], DD03Speciation)
+    assert isinstance(wic_adaspec_model["life_env"], CompoundEnvironment)

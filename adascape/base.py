@@ -5,7 +5,6 @@ import pandas as pd
 import scipy.stats as stats
 import scipy.spatial as spatial
 import scipy.spatial.distance as dist
-from scipy.cluster.hierarchy import fclusterdata
 from scipy.cluster.vq import kmeans2
 
 
@@ -17,7 +16,7 @@ class SpeciationModelBase:
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05, taxon_def='spec_clus'):
+                 on_extinction='warn', taxon_threshold=0.05, taxon_def='traits', rho=0):
         """
         Initialization of based model.
 
@@ -58,19 +57,16 @@ class SpeciationModelBase:
             a RuntimeWarning, 'raise' raises a RuntimeError (the simulation
             stops) or 'ignore' silently continues the simulation
             doing nothing (no population).
-        distance_metric : str, optional
-            distance metric to calculate pairwise distance between individuals
-            in n-dimensional trait space. For further details see documentation
-            of method scipy.cluster.hierarchy.fclusterdata.
-            default = 'ward'
         taxon_threshold : float, optional
-            distance threshold to construct clusters. For further details see documentation
-            of method scipy.cluster.hierarchy.fclusterdata.
-            default  = 0.5
-        taxon_def: {'hier_clus', 'spec_clus'}
-                   Method use to define a taxon based on individual's traits
-                   and their shared common ancestry, using a hierarchical clustering 'hier_clus'
-                   of a spectral clustering 'spec_clus', default 'spec_clus'
+            distance threshold to construct clusters.
+            default  = 0.05
+        taxon_def: {'traits', 'traits_location'}
+                   Variables use to define a taxon either to be based on individual's traits
+                   and their shared common ancestry ('trait'), or the same as before but
+                   also considering individuals location ('traits_location'), default 'traits'
+        rho:  float
+            correlation coefficient between traits. Default = 0 all traits are
+             independent of each other
         """
         valid_on_extinction = ('warn', 'raise', 'ignore')
 
@@ -99,9 +95,9 @@ class SpeciationModelBase:
             'random_seed': random_seed,
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
-            'distance_metric': distance_metric,
             'taxon_threshold': taxon_threshold,
-            'taxon_def': taxon_def
+            'taxon_def': taxon_def,
+            'rho': rho
         }
         self._env_field_bounds = None
         self._rescale_rates = rescale_rates
@@ -117,10 +113,10 @@ class SpeciationModelBase:
         assert len(self._init_trait_funcs) == len(self._opt_trait_funcs)
 
         # for test of taxon definition
-        valid_taxon_def = ('spec_clus', 'hier_clus')
+        valid_taxon_def = ('traits', 'traits_location')
         if taxon_def not in valid_taxon_def:
             raise ValueError(
-                "invalid value found for 'valid_taxon_def' parameter. "
+                "invalid value found for 'taxon_def' parameter. "
                 "Found {!r}, must be one of {!r}"
                     .format(taxon_def, valid_taxon_def)
             )
@@ -158,31 +154,22 @@ class SpeciationModelBase:
             [func(self._init_abundance) for func in self._init_trait_funcs.values()]
         )
 
-        if self.params['taxon_def'] == 'hier_clus':
-            clus = fclusterdata(init_traits,
-                                method=self._params['distance_metric'],
-                                t=self._params['taxon_threshold'],
-                                criterion='distance')
-            taxon_id = clus.copy()
-            ancestor_id = clus - 1
+        clus = self._spect_clus(init_traits,
+                                taxon_threshold=self._params['taxon_threshold'])
+        taxon_id = clus + 1
+        ancestor_id = clus.copy()
 
-        elif self.params['taxon_def'] == 'spec_clus':
-            clus = self._spect_clus(init_traits,
-                                    taxon_threshold=self._params['taxon_threshold'])
-            taxon_id = clus + 1
-            ancestor_id = clus.copy()
-
-        population = {'step': 0,
-                      'time': 0.,
-                      'dt': 0.,
-                      'x': self._sample_in_range(x_range),
-                      'y': self._sample_in_range(y_range),
-                      'trait': init_traits,
-                      'taxon_id': taxon_id,
-                      'ancestor_id': ancestor_id,
-                      'n_offspring': np.zeros(init_traits.shape[0])
-                      }
-        self._individuals.update(population)
+        init_population = {'step': 0,
+                           'time': 0.,
+                           'dt': 0.,
+                           'x': self._sample_in_range(x_range),
+                           'y': self._sample_in_range(y_range),
+                           'trait': init_traits,
+                           'taxon_id': taxon_id,
+                           'ancestor_id': ancestor_id,
+                           'n_offspring': np.zeros(init_traits.shape[0])
+                           }
+        self._individuals.update(init_population)
 
     def _compute_taxon_ids(self):
         """
@@ -204,36 +191,30 @@ class SpeciationModelBase:
         current_ancestor_id = np.repeat(self._individuals[new_id_key], self._individuals['n_offspring'].astype('int'))
         max_clus = self._individuals['taxon_id'].max()
 
-        if self.params['taxon_def'] == 'hier_clus':
-            clus_dat = np.column_stack([self._individuals['trait'], current_ancestor_id/current_ancestor_id.max()])
-            clus = fclusterdata(clus_dat,
-                                method=self._params['distance_metric'],
-                                t=self._params['taxon_threshold'],
-                                criterion='distance')
-            new_taxon_id = clus + max_clus
-        elif self.params['taxon_def'] == 'spec_clus':
-            new_taxon_id = np.zeros_like(current_ancestor_id)
-            for ans in np.unique(current_ancestor_id):
-                ans_indx = np.where(current_ancestor_id==ans)[0]
-                clus = self._spect_clus(self._individuals['trait'][ans_indx],
-                                        taxon_threshold=self._params['taxon_threshold'])
-                if max_clus < np.max(clus):
-                    new_clus = clus + 1
-                    new_taxon_id[ans_indx] = new_clus.astype(int)
-                elif max_clus >= np.max(clus):
-                    new_clus = clus + 1 + max_clus
-                    new_taxon_id[ans_indx] = new_clus.astype(int)
-                max_clus = np.max(new_clus).astype(int)
+        new_taxon_id = np.zeros_like(current_ancestor_id)
+        for ans in np.unique(current_ancestor_id):
+            ans_indx = np.where(current_ancestor_id == ans)[0]
+            clusdata = pd.DataFrame(self._individuals['trait'][ans_indx])
+            if self.params['taxon_threshold'] == 'traits_location':
+                clusdata['x'] = self._individuals['x'][ans_indx] / self._grid_bounds['x'][1]
+                clusdata['y'] = self._individuals['y'][ans_indx] / self._grid_bounds['y'][1]
+            clus = self._spect_clus(clusdata,
+                                    taxon_threshold=self._params['taxon_threshold'])
+            if max_clus < np.max(clus):
+                new_clus = clus + 1
+                new_taxon_id[ans_indx] = new_clus.astype(int)
+            elif max_clus >= np.max(clus):
+                new_clus = clus + 1 + max_clus
+                new_taxon_id[ans_indx] = new_clus.astype(int)
+            max_clus = np.max(new_clus).astype(int)
 
-        else:
-            new_taxon_id = np.empty_like(current_ancestor_id)
         return new_taxon_id, current_ancestor_id
 
     def _spect_clus(self, clus_data, taxon_threshold=0.05, split_size=10):
         """
         Spectral clustering algorithm based on von Luxburg (2007), which we modified to:
             1) only divide groups of individuals larger than "split_size",
-            2) if division occurs only divide into a maximum of two clusters or  taxon_ids,
+            2) if division occurs only divide into a maximum of two clusters or taxon_ids,
             3) the minimum size of the divided clusters or taxon_ids must be half of split_size.
 
         Ulrike von Luxburg (2007) A tutorial on spectral clustering.Statistics and Computing,
@@ -257,28 +238,28 @@ class SpeciationModelBase:
         except:
             D2Mat = dist.squareform(dist.pdist(clus_data[:, np.newaxis]))
 
-        sigma = np.std(D2Mat.flatten())
-        mean = np.mean(D2Mat.flatten())
+        if clus_data.shape[0] > split_size:
 
-        if clus_data.shape[0] > split_size and sigma > taxon_threshold:
-            W = np.exp(-(D2Mat - mean) ** 2 / (2 * sigma ** 2))  # Gaussian similarity function
-            W[D2Mat > taxon_threshold] = 0  # rule to connect individuals as well as ancestor
+            W = np.exp(-np.abs(D2Mat) ** 2 / (2 * taxon_threshold ** 2))  # Gaussian similarity
+            W[D2Mat > taxon_threshold] = 0
 
             D = np.diag(np.sum(W, axis=1))
             L = D - W  # L is a real symmetric (see Proposition 1 Luxburg 2007)
             E, U = np.linalg.eigh(L)
-            E = np.real(E)  # remove tiny imaginary numbers (should be tiny because L is positive semi-definite by Theorem)
-            U = np.real(U)  # remove tiny imaginary numbers (should be because for real symmetric matrices, U is an orthonormal matrix)
+            E = np.real(E)  # remove tiny imaginary numbers
+            # (should be tiny because L is positive semi-definite by Theorem)
+            U = np.real(U)  # remove tiny imaginary numbers
+            # (should be because for real symmetric matrices, U is an orthonormal matrix)
             E[np.isclose(E, np.zeros(len(E)))] = 0  # remove tiny numbers that are too close to zeros
             n_comp = np.sum(E == 0)
             if n_comp > 1:
-                k = min(2, n_comp)
+                k = min(2, int(n_comp))
                 centroid, labels = kmeans2(U[:, :k], k=k, minit='points', seed=self._rng)
                 count1 = np.sum(labels == 0)
                 count2 = np.sum(labels == 1)
-                if count1 < split_size//2:
+                if count1 < split_size // 2:
                     labels[labels == 0] = 1
-                if count2 < split_size//2:
+                if count2 < split_size // 2:
                     labels[labels == 1] = 0
                 if np.all(labels.astype(int) == 1):
                     labels = np.zeros(clus_data.shape[0])
@@ -512,9 +493,9 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
+                 on_extinction='warn', taxon_threshold=0.05,
                  nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
-                 sigma_mut=0.05, mut_prob=0.05, taxon_def='spec_clus'):
+                 sigma_mut=0.05, mut_prob=0.05, taxon_def='traits', rho=0):
         """Initialization of speciation model without competition.
 
         Parameters
@@ -541,9 +522,9 @@ class IR12SpeciationModel(SpeciationModelBase):
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
-                         distance_metric=distance_metric,
                          taxon_threshold=taxon_threshold,
-                         taxon_def=taxon_def)
+                         taxon_def=taxon_def,
+                         rho=rho)
 
         # default parameter values
         self._params.update({
@@ -552,11 +533,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'sigma_env_trait': sigma_env_trait,
             'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
-            'mut_prob': mut_prob,
-            'always_direct_parent': always_direct_parent,
-            'on_extinction': on_extinction,
-            'distance_metric': distance_metric,
-            'taxon_threshold': taxon_threshold
+            'mut_prob': mut_prob
         })
 
     def _get_n_gen(self, dt):
@@ -609,6 +586,10 @@ class IR12SpeciationModel(SpeciationModelBase):
             Time step duration.
 
         """
+        if self._rescale_rates:
+            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
+        else:
+            sigma_env_trait = self._params['sigma_env_trait']
 
         if self.abundance:
             individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
@@ -622,12 +603,16 @@ class IR12SpeciationModel(SpeciationModelBase):
             # compute offspring sizes
             r_d = self._params['car_cap'] / self._count_neighbors(individual_positions)
 
-            trait_fitness = []
-            for i in range(self._individuals['trait'].shape[1]):
-                delta_trait = self._individuals['trait'][:, i].flatten() - opt_trait[:, i]
-                trait_fitness.append(np.exp(-delta_trait ** 2 / (2 * self.params['sigma_env_trait'] ** 2)))
+            delta_trait_i = self._individuals['trait'] - opt_trait
+            diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+            sigma_diag = np.diag(diag_val ** 2)
+            sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
+            sigma_i = sigma_diag + sigma_offdiag
+            fitness = np.zeros(self._individuals['trait'].shape[0])
+            inv_sigma = np.linalg.inv(sigma_i)
+            for i in range(self._individuals['trait'].shape[0]):
+                fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
 
-            fitness = np.prod(trait_fitness, axis=0)
             n_gen = self._get_n_gen(dt)
             n_offspring = np.round(r_d * fitness * np.sqrt(n_gen)).astype('int')
 
@@ -721,10 +706,10 @@ class DD03SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', distance_metric='ward', taxon_threshold=0.05,
+                 on_extinction='warn', taxon_threshold=0.05,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
-                 sigma_comp_dist=0.19, taxon_def='spec_clus'):
+                 sigma_comp_dist=0.19, taxon_def='traits', rho=0):
         """
         Initialization of speciation model with competition.
 
@@ -758,9 +743,9 @@ class DD03SpeciationModel(SpeciationModelBase):
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
-                         distance_metric=distance_metric,
                          taxon_threshold=taxon_threshold,
-                         taxon_def=taxon_def)
+                         taxon_def=taxon_def,
+                         rho=rho)
 
         self._params.update({
             'birth_rate': birth_rate,
@@ -772,10 +757,6 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_mov': sigma_mov,
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
-            'always_direct_parent': always_direct_parent,
-            'on_extinction': on_extinction,
-            'distance_metric': distance_metric,
-            'taxon_threshold': taxon_threshold
         })
 
     def evaluate_fitness(self, dt):
@@ -950,8 +931,15 @@ class DD03SpeciationModel(SpeciationModelBase):
         # number of individual with similar traits and in proximity to each other
         n_eff = np.sum(delta_trait_norm * delta_xy_norm, axis=1)
         # environmental fitness to local environmental fields
-        delta_env_trait = np.exp(-0.5 * (self._individuals['trait'] - opt_trait) ** 2 / sigma_env_trait ** 2)
-        env_fitness = np.prod(delta_env_trait, axis=1)
+        delta_trait_i = self._individuals['trait'] - opt_trait
+        diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+        sigma_diag = np.diag(diag_val ** 2)
+        sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
+        sigma_i = sigma_diag + sigma_offdiag
+        env_fitness = np.zeros(self._individuals['trait'].shape[0])
+        inv_sigma = np.linalg.inv(sigma_i)
+        for i in range(self._individuals['trait'].shape[0]):
+            env_fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
         # global carrying capacity
         a = self.abundance / self._params['car_cap_max']
         # local carrying capacity

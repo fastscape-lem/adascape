@@ -19,10 +19,15 @@ class Speciation:
     init_abundance = xs.variable(description="initial number of individuals", static=True)
     random_seed = xs.variable(default=None, description="random number generator seed", static=True)
     rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
-    distance_metric = xs.variable(default='ward', description="distance metric used to construct taxon clusters "
-                                                              "for hier_clus")
     taxon_threshold = xs.variable(default=0.05, description="threshold used to construct taxon clusters")
-    taxon_def = xs.variable(default='spec_clus', description="Method use to define a taxon")
+    taxon_def = xs.variable(default='traits', description="Taxon definition based on common ancestry and traits ("
+                                                          "'traits') or common ancestry, traits and location ("
+                                                          "'traits_location')")
+    init_x_range_min = xs.variable(default=None, description="min range of individuals on x coordinate", static=True)
+    init_x_range_max = xs.variable(default=None, description="min range of individuals on x coordinate", static=True)
+    init_y_range_min = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
+    init_y_range_max = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
+    rho = xs.variable(default=0, description="Correlation between traits")
 
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
@@ -118,8 +123,8 @@ class IR12Speciation(Speciation):
             "sigma_mut": self.sigma_mut,
             "sigma_env_trait": self.sigma_env_trait,
             "random_seed": self.random_seed,
-            "distance_metric": self.distance_metric,
-            "taxon_threshold": self.taxon_threshold
+            "taxon_threshold": self.taxon_threshold,
+            "rho": self.rho
         }
 
     def initialize(self):
@@ -134,7 +139,17 @@ class IR12Speciation(Speciation):
             always_direct_parent=False,
             **self._get_model_params()
         )
-        self._model.initialize()
+        if self.init_x_range_min is None and self.init_x_range_max is None:
+            init_x_range = None
+        else:
+            init_x_range = (self.init_x_range_min, self.init_x_range_max)
+
+        if self.init_y_range_min is None and self.init_y_range_max is None:
+            init_y_range = None
+        else:
+            init_y_range = (self.init_y_range_min, self.init_y_range_max)
+
+        self._model.initialize(init_x_range, init_y_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -161,8 +176,8 @@ class DD03Speciation(Speciation):
     """Doebeli & Dieckmann (2003) Speciation model as a fastscape extension.
     For more info, see :class:`adascape.base.DD03SpeciationModel`.
     """
-    birth_rate = xs.variable(description="birth rate of individuals")
-    movement_rate = xs.variable(description="movement/dispersion rate of individuals")
+    birth_rate = xs.variable(default=1, description="birth rate of individuals")
+    movement_rate = xs.variable(default=5, description="movement/dispersion rate of individuals")
     car_cap_max = xs.variable(description="maximum carrying capacity")
     sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
@@ -185,8 +200,8 @@ class DD03Speciation(Speciation):
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
             "random_seed": self.random_seed,
-            "distance_metric": self.distance_metric,
-            "taxon_threshold": self.taxon_threshold
+            "taxon_threshold": self.taxon_threshold,
+            "rho": self.rho
         }
 
     def initialize(self):
@@ -202,7 +217,17 @@ class DD03Speciation(Speciation):
             **self._get_model_params()
         )
 
-        self._model.initialize()
+        if self.init_x_range_min is None and self.init_x_range_max is None:
+            init_x_range = None
+        else:
+            init_x_range = (self.init_x_range_min, self.init_x_range_max)
+
+        if self.init_y_range_min is None and self.init_y_range_max is None:
+            init_y_range = None
+        else:
+            init_y_range = (self.init_y_range_min, self.init_y_range_max)
+
+        self._model.initialize(init_x_range, init_y_range)
 
     @xs.runtime(args='step_delta')
     def run_step(self, dt):
@@ -421,7 +446,7 @@ class FastscapePrecipitationTrait(TraitBase):
         return opt_trait
 
 
-nocomp_adaspec_model = basic_model.update_processes(
+woc_adaspec_model = basic_model.update_processes(
     {'life': IR12Speciation,
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
@@ -433,7 +458,7 @@ nocomp_adaspec_model = basic_model.update_processes(
      'drainage': OrographicDrainageDischarge}
 )
 
-wcomp_adaspec_model_model = basic_model.update_processes(
+wic_adaspec_model = basic_model.update_processes(
     {'life': DD03Speciation,
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,

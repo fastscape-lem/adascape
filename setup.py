@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 setup(name='adascape',
-      version='0.1.0b',
+      version='0.1.0b2',
       description='A simple adaptive speciation model as a landscape evolution model component',
       url='https://git.gfz-potsdam.de/sec55-public/adaptive-speciation',
       author='Esteban Acevedo-Trejos, Katherine Kravitz, Benoit Bovy',
