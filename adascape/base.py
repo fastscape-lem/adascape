@@ -1,3 +1,4 @@
+import pdb
 import textwrap
 import warnings
 import numpy as np
@@ -781,15 +782,63 @@ class DD03SpeciationModel(SpeciationModelBase):
             )
 
             # Compute events probabilities
-            net_gain, death_i = self.logistic_growth_comp(opt_trait=opt_trait, dt=dt)
-            birth_i = np.array(self.abundance * [self._params['birth_rate']]) + net_gain
-            movement_i = self.abundance * [self._params['movement_rate']]
-            events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
-            events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
-                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
-                                           np.sum(movement_i) / events_tot])
+            #net_gain, death_i = self.logistic_growth_comp(opt_trait=opt_trait, dt=dt)
+            if self._rescale_rates:
+                sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
+                sigma_comp_trait = self._scaled_param(self._params['sigma_comp_trait'], dt)
+                sigma_comp_dist = self._scaled_param(self._params['sigma_comp_dist'], dt)
+            else:
+                sigma_env_trait = self._params['sigma_env_trait']
+                sigma_comp_trait = self._params['sigma_comp_trait']
+                sigma_comp_dist = self._params['sigma_comp_dist']
+            # trait distance among individuals
+            delta_comp_trait = dist.squareform(dist.pdist(self._individuals['trait']))
+            delta_trait_norm = np.exp(-0.5 * delta_comp_trait ** 2 / sigma_comp_trait ** 2)
+            # spatial distance among individuals
+            delta_xy = dist.squareform(dist.pdist(np.column_stack([self._individuals['x'],
+                                                                   self._individuals['y']])))
+            delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
+            # number of individual with similar traits and in proximity to each other
+            n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)  #1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
+            delta_trait_i = self._individuals['trait'] - opt_trait
+            diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+            sigma_diag = np.diag(diag_val ** 2)
+            sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
+            sigma_i = sigma_diag + sigma_offdiag
+            env_fitness = np.zeros(self._individuals['trait'].shape[0])
+            inv_sigma = np.linalg.inv(sigma_i)
+            for i in range(self._individuals['trait'].shape[0]):
+                env_fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
 
-            n_offspring = np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))
+            death_i = n_eff/(self._params['car_cap_max'] * env_fitness)
+            birth_i = np.array(self.abundance * [self._params['birth_rate']]) #+ net_gain
+            # movement_i = self.abundance * [self._params['movement_rate']]
+            events_tot = np.sum(birth_i) + np.sum(death_i)  # + np.sum(movement_i)
+
+            events_i = self._rng.choice(a=['B', 'D',  # 'M'
+                                           ], size=self._individuals['trait'].shape[0],
+                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
+                                           # np.sum(movement_i) / events_tot
+                                           ])
+
+            #pdb.set_trace()
+
+            t = 0.0
+            n_offspring = np.zeros(self._individuals['trait'].shape[0])
+            while t <= 1:
+                dt = self._rng.exponential(1 / events_tot)
+                t += dt
+                event_type_i = self._rng.choice(events_i)
+                if event_type_i == 'B':
+                    i_idx = self._rng.choice(a=self.abundance, p=birth_i/np.sum(birth_i))
+                    n_offspring[i_idx] += 1
+                elif event_type_i == 'D':
+                    i_idx = self._rng.choice(a=self.abundance, p=death_i / np.sum(death_i))
+                    n_offspring[i_idx] -= 1
+            #pdb.set_trace()
+
+            n_offspring[n_offspring < 0] = 0
+            #n_offspring = np.where(events_i == 'B', 2, 0)  # np.where(events_i == 'M', 1, 0))
 
         else:
             events_i = np.zeros(self._individuals['trait'].shape[1])
@@ -798,7 +847,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         self._individuals.update({'events_i': events_i,
                                   'death_i': death_i,
-                                  'n_offspring': n_offspring
+                                  'n_offspring': n_offspring.astype('int')
                                   })
 
     def _update_individuals(self, dt):
@@ -835,49 +884,78 @@ class DD03SpeciationModel(SpeciationModelBase):
                                for k in ('x', 'y', 'trait')}
             new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
         else:
-            events_i = self._individuals['events_i']
-            death_i = self._individuals['death_i']
+            # generate offspring
+            new_individuals = {k: np.repeat(self._individuals[k], n_offspring)
+                               for k in ('x', 'y')}
+            new_individuals['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
-            # initialize temporary dictionaries
-            offspring = {k: np.array([]) for k in ('x', 'y')}
-            extant = self._individuals.copy()
+            # mutate offspring
+            to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < mut_prob
+            for i in range(new_individuals['trait'].shape[1]):
+                new_individuals['trait'][:, i] = np.where(to_mutate,
+                                                          self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
+                                                          new_individuals['trait'][:, i])
 
-            # Birth
-            offspring['x'] = self._individuals['x'][events_i == 'B']
-            offspring['y'] = self._individuals['y'][events_i == 'B']
-
-            to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
-            offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
-            for i in range(extant['trait'].shape[1]):
-                offspring['trait'][:, i] = np.where(to_mutate,
-                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i],
-                                                                       sigma_mut),
-                                                    self._individuals['trait'][events_i == 'B', i])
-
-            # Movement
-            new_x, new_y = self._mov_within_bounds(self._individuals['x'][events_i == 'M'],
-                                                   self._individuals['y'][events_i == 'M'],
+            # disperse offspring within grid bounds
+            new_x, new_y = self._mov_within_bounds(new_individuals['x'],
+                                                   new_individuals['y'],
                                                    sigma_mov)
-            extant['x'][events_i == 'M'] = new_x
-            extant['y'][events_i == 'M'] = new_y
+            new_individuals['x'] = new_x
+            new_individuals['y'] = new_y
 
-            # Death
-            ids = np.arange(extant['x'].size)
-            todie = self._rng.choice(ids, size=self._individuals['x'][events_i == 'D'].size,
-                                     p=death_i / death_i.sum(), replace=False)
-            todie_ma = np.logical_not(np.any(ids == todie.repeat(ids.size).reshape(todie.size, ids.size), axis=0))
-            extant['x'] = extant['x'][todie_ma]
-            extant['y'] = extant['y'][todie_ma]
-            extant['trait'] = extant['trait'][todie_ma, :]
-            new_individuals = {k: np.append(extant[k], offspring[k]) for k in offspring.keys()}
-            new_individuals['trait'] = new_individuals['trait'].reshape(
-                [extant['trait'].shape[0] + offspring['trait'].shape[0], extant['trait'].shape[1]])
+            #events_i = self._individuals['events_i']
+            #death_i = self._individuals['death_i']
+
+            # # initialize temporary dictionaries
+            # offspring = {k: np.array([]) for k in ('x', 'y')}
+            # extant = self._individuals.copy()
+            #
+            # # Birth
+            # offspring['x'] = self._individuals['x'][events_i == 'B']
+            # offspring['y'] = self._individuals['y'][events_i == 'B']
+            #
+            # to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
+            # offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
+            # for i in range(extant['trait'].shape[1]):
+            #     offspring['trait'][:, i] = np.where(to_mutate,
+            #                                         self._mutate_trait(self._individuals['trait'][events_i == 'B', i],
+            #                                                            sigma_mut),
+            #                                         self._individuals['trait'][events_i == 'B', i])
+            #
+            # # Death
+            # ids = np.arange(extant['x'].size)
+            # todie = self._rng.choice(ids, size=self._individuals['x'][events_i == 'D'].size,
+            #                          p=death_i / death_i.sum(), replace=False)
+            # todie_ma = np.logical_not(np.any(ids == todie.repeat(ids.size).reshape(todie.size, ids.size), axis=0))
+            # extant['x'] = extant['x'][todie_ma]
+            # extant['y'] = extant['y'][todie_ma]
+            # extant['trait'] = extant['trait'][todie_ma, :]
+            # new_individuals = {k: np.append(extant[k], offspring[k]) for k in offspring.keys()}
+            # new_individuals['trait'] = new_individuals['trait'].reshape(
+            #     [extant['trait'].shape[0] + offspring['trait'].shape[0], extant['trait'].shape[1]])
+            #
+            # # Movement
+            # new_x, new_y = self._mov_within_bounds(new_individuals['x'],
+            #                                        new_individuals['y'],
+            #                                        sigma_mov)
+            # new_individuals['x'] = new_x
+            # new_individuals['y'] = new_y
 
         # Update dictionary
+        # self._individuals.update(new_individuals)
+        # self._individuals.update({'time': self._individuals['time'] + dt})
+        # self._individuals.update({'step': self._individuals['step'] + 1})
+        # self._individuals.update({'dt': dt})
+        # if not n_offspring.sum():
+        #     taxon_id, ancestor_id = np.array([]), np.array([])
+        # else:
+        #     taxon_id, ancestor_id = self._compute_taxon_ids()
+        # self._individuals.update({'taxon_id': taxon_id})
+        # self._individuals.update({'ancestor_id': ancestor_id})
+
+        self._individuals['step'] += 1
+        self._individuals['time'] += dt
         self._individuals.update(new_individuals)
-        self._individuals.update({'time': self._individuals['time'] + dt})
-        self._individuals.update({'step': self._individuals['step'] + 1})
-        self._individuals.update({'dt': dt})
         if not n_offspring.sum():
             taxon_id, ancestor_id = np.array([]), np.array([])
         else:
@@ -917,19 +995,20 @@ class DD03SpeciationModel(SpeciationModelBase):
             sigma_comp_dist = self._params['sigma_comp_dist']
 
         # normalize spatial dimensions
-        x = (self._individuals['x'] - self._grid_bounds['x'][0]) / (
-                self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
-        y = (self._individuals['y'] - self._grid_bounds['y'][0]) / (
-                self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
+        # x = (self._individuals['x'] - self._grid_bounds['x'][0]) / (
+        #         self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
+        # y = (self._individuals['y'] - self._grid_bounds['y'][0]) / (
+        #         self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
 
         # trait distance among individuals
         delta_comp_trait = dist.squareform(dist.pdist(self._individuals['trait']))
         delta_trait_norm = np.exp(-0.5 * delta_comp_trait ** 2 / sigma_comp_trait ** 2)
         # spatial distance among individuals
-        delta_xy = dist.squareform(dist.pdist(np.column_stack([x, y])))
+        delta_xy = dist.squareform(dist.pdist(np.column_stack([self._individuals['x'],
+                                                               self._individuals['y']])))
         delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
         # number of individual with similar traits and in proximity to each other
-        n_eff = np.sum(delta_trait_norm * delta_xy_norm, axis=1)
+        n_eff = 1 / (2 * np.pi * sigma_comp_dist ** 2) * np.sum(delta_trait_norm * delta_xy_norm, axis=1)
         # environmental fitness to local environmental fields
         delta_trait_i = self._individuals['trait'] - opt_trait
         diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
@@ -941,7 +1020,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         for i in range(self._individuals['trait'].shape[0]):
             env_fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
         # global carrying capacity
-        a = self.abundance / self._params['car_cap_max']
+        a = 0#self.abundance / self._params['car_cap_max']
         # local carrying capacity
         k_eff = self._params['car_cap_max'] * env_fitness
         b = n_eff / k_eff
