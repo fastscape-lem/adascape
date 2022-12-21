@@ -177,7 +177,6 @@ class DD03Speciation(Speciation):
     For more info, see :class:`adascape.base.DD03SpeciationModel`.
     """
     birth_rate = xs.variable(default=1, description="birth rate of individuals")
-    movement_rate = xs.variable(default=5, description="movement/dispersion rate of individuals")
     car_cap_max = xs.variable(description="maximum carrying capacity")
     sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
     mut_prob = xs.variable(description="mutation probability")
@@ -191,7 +190,6 @@ class DD03Speciation(Speciation):
     def _get_model_params(self):
         return {
             'birth_rate': self.birth_rate,
-            'movement_rate': self.movement_rate,
             'car_cap_max': self.car_cap_max,
             'sigma_env_trait': self.sigma_env_trait,
             'mut_prob': self.mut_prob,
