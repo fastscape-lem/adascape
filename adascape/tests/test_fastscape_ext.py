@@ -16,7 +16,6 @@ def specDD03_process(trait_funcs):
     params = {
         'init_abundance': 10,
         'birth_rate': 1,
-        'movement_rate': 5,
         'car_cap_max': 100,
         'mut_prob': 1.0,
         'sigma_env_trait': 0.5,

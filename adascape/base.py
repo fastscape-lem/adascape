@@ -708,7 +708,7 @@ class DD03SpeciationModel(SpeciationModelBase):
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', taxon_threshold=0.05,
-                 birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
+                 birth_rate=1, car_cap_max=500, sigma_env_trait=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
                  sigma_comp_dist=0.19, taxon_def='traits', rho=0):
         """
@@ -718,8 +718,6 @@ class DD03SpeciationModel(SpeciationModelBase):
         ----------
         birth_rate : integer or float
             birth rate of individuals
-        movement_rate : integer of float
-            movement/dispersion rate of individuals
         car_cap_max : integer
             maximum carrying capacity
         sigma_env_trait : float
@@ -750,7 +748,6 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         self._params.update({
             'birth_rate': birth_rate,
-            'movement_rate': movement_rate,
             'car_cap_max': car_cap_max,
             'sigma_env_trait': sigma_env_trait,
             'mut_prob': mut_prob,
@@ -763,8 +760,8 @@ class DD03SpeciationModel(SpeciationModelBase):
     def evaluate_fitness(self, dt):
         """
         Evaluate fitness of individuals' in a given environmental field.
-        The computation is based on the Gillespie algorithm for a group
-        of individuals that randomly grows, moves, and dies.
+        The computation is based on a stochastic algorithm for a group
+        of individuals that randomly grows, and dies.
 
         Parameters
         ----------
@@ -810,17 +807,12 @@ class DD03SpeciationModel(SpeciationModelBase):
             inv_sigma = np.linalg.inv(sigma_i)
             for i in range(self._individuals['trait'].shape[0]):
                 env_fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
-
+            # compute events and event probabilities
             death_i = n_eff/(self._params['car_cap_max'] * env_fitness)
-            birth_i = env_fitness * self._params['birth_rate'] #np.repeat(self._params['birth_rate'], self.abundance)
-            #movement_i = np.repeat(self._params['movement_rate'], self.abundance)
-            events_tot = np.sum(birth_i) + np.sum(death_i) #+ np.sum(movement_i)
-
-            events_i = self._rng.choice(a=['B', 'D',  #'M'
-                                           ], size=self._individuals['trait'].shape[0],
-                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
-                                           #np.sum(movement_i) / events_tot
-                                           ])
+            birth_i = env_fitness * self._params['birth_rate']
+            events_tot = np.sum(birth_i) + np.sum(death_i)
+            events_i = self._rng.choice(a=['B', 'D'], size=self._individuals['trait'].shape[0],
+                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot])
 
             tau = 0.0
             n_offspring = np.zeros(self._individuals['trait'].shape[0])
@@ -830,30 +822,13 @@ class DD03SpeciationModel(SpeciationModelBase):
                 event_type_i = self._rng.choice(events_i)
                 if event_type_i == 'B':
                     i_idx = self._rng.choice(a=self.abundance, p=birth_i/np.sum(birth_i))
-                    n_offspring[i_idx] += self._params['car_cap_max']/n_eff[i_idx] * env_fitness[i_idx]
-                    #pdb.set_trace()
-                # elif event_type_i == 'D':
-                #     i_idx = self._rng.choice(a=self.abundance, p=death_i / np.sum(death_i))
-                #     n_offspring[i_idx] -= 1
-                # elif event_type_i == 'M':
-                #     i_idx = self._rng.choice(a=self.abundance, p=movement_i / np.sum(movement_i))
-                #     new_x = self._truncnorm.rvs(a=(0-x[i_idx])/self._params['sigma_mov'],
-                #                                 b=(1-x[i_idx])/self._params['sigma_mov'],
-                #                                 loc=x[i_idx],
-                #                                 scale=self._params['sigma_mov'])
-                #     new_y = self._truncnorm.rvs(a=(0-y[i_idx])/self._params['sigma_mov'],
-                #                                 b=(1-y[i_idx])/self._params['sigma_mov'],
-                #                                 loc=y[i_idx],
-                #                                 scale=self._params['sigma_mov'])
-                #     self.individuals['x'][i_idx] = new_x * self._grid_bounds['x'][1]
-                #     self.individuals['y'][i_idx] = new_y * self._grid_bounds['y'][1]
-                n_offspring[n_offspring<0] = 0
+                    n_offspring[i_idx] += np.round(self._params['car_cap_max']/n_eff[i_idx] * env_fitness[i_idx])
         else:
-            events_i = np.zeros(self._individuals['trait'].shape[1])
-            death_i = np.zeros(self._individuals['trait'].shape[1])
-            n_offspring = np.zeros(self._individuals['trait'].shape[1])
+            env_fitness = np.zeros(self._individuals['trait'].shape[0])
+            death_i = np.zeros(self._individuals['trait'].shape[0])
+            n_offspring = np.zeros(self._individuals['trait'].shape[0])
 
-        self._individuals.update({'events_i': events_i,
+        self._individuals.update({'fitness': env_fitness,
                                   'death_i': death_i,
                                   'n_offspring': n_offspring.astype('int')
                                   })
@@ -921,7 +896,7 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # reset offspring data
         self._individuals.update({
-            'events_i': np.zeros(self._individuals['trait'].shape[0]),
+            'fitness': np.zeros(self._individuals['trait'].shape[0]),
             'death_i': np.zeros(self._individuals['trait'].shape[0]),
             'n_offspring': np.zeros(self._individuals['trait'].shape[0])
         })
