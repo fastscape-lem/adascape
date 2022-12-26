@@ -40,7 +40,7 @@ class SpeciationModelBase:
             If None (default), results will differ from one run
             to another.
         rescale_rates : bool
-            If True (default) rates and parameters will be rescaled as
+            If True rates and parameters will be rescaled as
             a fraction of the square root number of generations per
             time step.
         always_direct_parent : bool, optional
@@ -493,8 +493,8 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', taxon_threshold=0.05,
-                 nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
+                 on_extinction='warn', taxon_threshold=0.05, sigma_comp_trait=1.0,
+                 nb_radius=500., car_cap=1000., sigma_env_fitness=0.3, sigma_mov=5.,
                  sigma_mut=0.05, mut_prob=0.05, taxon_def='traits', rho=0):
         """Initialization of speciation model without competition.
 
@@ -505,7 +505,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             around each individual.
         car_cap: int
             Carrying capacity of group of individuals within the neighborhood area.
-        sigma_env_trait: float
+        sigma_env_fitness: float
             Width of fitness curve.
         sigma_mov: float
             Width of dispersal curve.
@@ -513,6 +513,10 @@ class IR12SpeciationModel(SpeciationModelBase):
             Width of mutation curve.
         mut_prob: float
             Probability of mutation occurring in offspring.
+        sigma_comp_trait: float,
+            competition variability for trait distance between individuals. A value of 1 will consider that
+            all individuals compete for resources in the giving neighborhood and a value of less than one,
+            will count only those individuals with similar trait values to compete for the same resources.
         """
         super().__init__(grid_x=grid_x, grid_y=grid_y,
                          init_trait_funcs=init_trait_funcs,
@@ -530,10 +534,11 @@ class IR12SpeciationModel(SpeciationModelBase):
         self._params.update({
             'nb_radius': nb_radius,
             'car_cap': car_cap,
-            'sigma_env_trait': sigma_env_trait,
+            'sigma_env_fitness': sigma_env_fitness,
             'sigma_mov': sigma_mov,
             'sigma_mut': sigma_mut,
-            'mut_prob': mut_prob
+            'mut_prob': mut_prob,
+            'sigma_comp_trait': sigma_comp_trait
         })
 
     def _get_n_gen(self, dt):
@@ -556,13 +561,17 @@ class IR12SpeciationModel(SpeciationModelBase):
         else:
             return dt / self._params['lifespan']
 
-    def _count_neighbors(self, pop_points):
+    def _count_neighbors(self, locations, traits):
         """
-        count number of neighbouring individual in a given radius.
+        count number of neighbouring individual in a given radius
+        either all of them when sigma_comp_trait => 1 or only those
+        with similar trait values if sigma_comp_trait < 1.
+        The parameter sigma_comp_trait thus control the effective number of
+        individuals that compete for the same limiting resource (K).
 
         Parameters
         ----------
-        pop_points : list of array
+        locations : list of array
             location of individuals in a grid.
 
         Returns
@@ -571,10 +580,19 @@ class IR12SpeciationModel(SpeciationModelBase):
             number of neighbouring individual in a give radius.
 
         """
-        index = spatial.cKDTree(pop_points)
+        index = spatial.cKDTree(locations)
         neighbors = index.query_ball_tree(index, self._params['nb_radius'])
 
-        return np.array([len(nb) for nb in neighbors])
+        n_eff = np.zeros(traits.shape[0])
+        for i, j in enumerate(neighbors):
+            if traits.shape[1] == 1:
+                delta_trait_ij = traits[i, np.newaxis] - traits[j, np.newaxis]
+            else:
+                delta_trait_ij = traits[i, np.newaxis] - traits[j, :]
+            alpha_ij = np.prod(np.exp(-0.5 * delta_trait_ij ** 2 / self.params['sigma_comp_trait'] ** 2), axis=1)
+            n_eff[i] = np.sum(alpha_ij)
+        n_all = np.array([len(nb) for nb in neighbors])
+        return n_all, n_eff
 
     def evaluate_fitness(self, dt):
         """Evaluate fitness and generate offspring number for group of individuals and
@@ -587,9 +605,9 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         """
         if self._rescale_rates:
-            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
+            sigma_env_fitness = self._scaled_param(self._params['sigma_env_fitness'], dt)
         else:
-            sigma_env_trait = self._params['sigma_env_trait']
+            sigma_env_fitness = self._params['sigma_env_fitness']
 
         if self.abundance:
             individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
@@ -601,10 +619,12 @@ class IR12SpeciationModel(SpeciationModelBase):
             )
 
             # compute offspring sizes
-            r_d = self._params['car_cap'] / self._count_neighbors(individual_positions)
+            n_all, n_eff = self._count_neighbors(individual_positions, self._individuals['trait'])
+
+            r_d = self._params['car_cap'] / n_eff
 
             delta_trait_i = self._individuals['trait'] - opt_trait
-            diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+            diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_fitness
             sigma_diag = np.diag(diag_val ** 2)
             sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
             sigma_i = sigma_diag + sigma_offdiag
@@ -617,12 +637,16 @@ class IR12SpeciationModel(SpeciationModelBase):
             n_offspring = np.round(r_d * fitness * np.sqrt(n_gen)).astype('int')
 
         else:
-            fitness = np.zeros(self._individuals['trait'].shape[1])
-            n_offspring = np.zeros(self._individuals['trait'].shape[1])
+            fitness = np.zeros(self._individuals['trait'].shape[0])
+            n_offspring = np.zeros(self._individuals['trait'].shape[0])
+            n_all = np.zeros(self._individuals['trait'].shape[0])
+            n_eff = np.zeros(self._individuals['trait'].shape[0])
 
         self._individuals.update({
             'fitness': fitness,
-            'n_offspring': n_offspring
+            'n_offspring': n_offspring,
+            'n_all': n_all,
+            'n_eff': n_eff
         })
 
     def _update_individuals(self, dt):
@@ -691,7 +715,9 @@ class IR12SpeciationModel(SpeciationModelBase):
         # reset fitness / offspring data
         self._individuals.update({
             'fitness': np.zeros(self._individuals['trait'].shape[0]),
-            'n_offspring': np.zeros(self._individuals['trait'].shape[0])
+            'n_offspring': np.zeros(self._individuals['trait'].shape[0]),
+            'n_all': np.zeros(self._individuals['trait'].shape[0]),
+            'n_eff': np.zeros(self._individuals['trait'].shape[0])
         })
 
 
@@ -707,7 +733,7 @@ class DD03SpeciationModel(SpeciationModelBase):
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', taxon_threshold=0.05,
-                 birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
+                 birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_fitness=0.3,
                  mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
                  sigma_comp_dist=0.19, taxon_def='traits', rho=0):
         """
@@ -721,7 +747,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             movement/dispersion rate of individuals
         car_cap_max : integer
             maximum carrying capacity
-        sigma_env_trait : float
+        sigma_env_fitness : float
             variability of trait-environment relationship
         mut_prob : float
             mutation probability
@@ -751,7 +777,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'birth_rate': birth_rate,
             'movement_rate': movement_rate,
             'car_cap_max': car_cap_max,
-            'sigma_env_trait': sigma_env_trait,
+            'sigma_env_fitness': sigma_env_fitness,
             'mut_prob': mut_prob,
             'sigma_mut': sigma_mut,
             'sigma_mov': sigma_mov,
@@ -908,11 +934,11 @@ class DD03SpeciationModel(SpeciationModelBase):
 
         # rescale parameters
         if self._rescale_rates:
-            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
+            sigma_env_fitness = self._scaled_param(self._params['sigma_env_fitness'], dt)
             sigma_comp_trait = self._scaled_param(self._params['sigma_comp_trait'], dt)
             sigma_comp_dist = self._scaled_param(self._params['sigma_comp_dist'], dt)
         else:
-            sigma_env_trait = self._params['sigma_env_trait']
+            sigma_env_fitness = self._params['sigma_env_fitness']
             sigma_comp_trait = self._params['sigma_comp_trait']
             sigma_comp_dist = self._params['sigma_comp_dist']
 
@@ -932,7 +958,7 @@ class DD03SpeciationModel(SpeciationModelBase):
         n_eff = np.sum(delta_trait_norm * delta_xy_norm, axis=1)
         # environmental fitness to local environmental fields
         delta_trait_i = self._individuals['trait'] - opt_trait
-        diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+        diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_fitness
         sigma_diag = np.diag(diag_val ** 2)
         sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
         sigma_i = sigma_diag + sigma_offdiag

@@ -19,7 +19,8 @@ def params_IR12():
         'taxon_threshold': 0.05,
         'nb_radius': 5,
         'car_cap': 5,
-        'sigma_env_trait': 0.5,
+        'sigma_comp_trait': 1.0,
+        'sigma_env_fitness': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
@@ -36,7 +37,7 @@ def params_DD03():
         'rho': 0,
         'always_direct_parent': True,
         'taxon_threshold': 0.05,
-        'sigma_env_trait': 0.5,
+        'sigma_env_fitness': 0.5,
         'sigma_mov': 4,
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
@@ -120,10 +121,11 @@ def model_IR12_repr():
         rho: 0
         nb_radius: 5
         car_cap: 5
-        sigma_env_trait: 0.5
+        sigma_env_fitness: 0.5
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
+        sigma_comp_trait: 1.0
     """)
 
 
@@ -141,10 +143,11 @@ def initialized_model_IR12_repr():
         rho: 0
         nb_radius: 5
         car_cap: 5
-        sigma_env_trait: 0.5
+        sigma_env_fitness: 0.5
         sigma_mov: 4
         sigma_mut: 0.5
         mut_prob: 0.04
+        sigma_comp_trait: 1.0
     """)
 
 
@@ -163,7 +166,7 @@ def model_DD03_repr():
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
-        sigma_env_trait: 0.5
+        sigma_env_fitness: 0.5
         mut_prob: 0.04
         sigma_mut: 0.5
         sigma_mov: 4
@@ -187,7 +190,7 @@ def initialized_model_DD03_repr():
         birth_rate: 1
         movement_rate: 5
         car_cap_max: 100
-        sigma_env_trait: 0.5
+        sigma_env_fitness: 0.5
         mut_prob: 0.04
         sigma_mut: 0.5
         sigma_mov: 4
@@ -279,7 +282,7 @@ class TestParapatricSpeciationModel:
         pd.testing.assert_frame_equal(actual, expected)
 
     def test_scaled_params(self, model_IR12, params_IR12):
-        test_params = ['sigma_env_trait', 'mut_prob', 'sigma_mov', 'sigma_mut']
+        test_params = ['sigma_env_fitness', 'mut_prob', 'sigma_mov', 'sigma_mut']
         rescaled_params = [model_IR12._scaled_param(params_IR12[p], 1) for p in test_params]
         expected = [0.5, 0.04, 4.0, 0.5]
         assert rescaled_params == expected
@@ -288,17 +291,21 @@ class TestParapatricSpeciationModel:
         X, Y = grid
         init_trait_funcs, opt_trait_funcs = trait_funcs
         params_IR12.pop('lifespan')
-        test_params = ['sigma_env_trait', 'mut_prob', 'sigma_mov', 'sigma_mut']
+        test_params = ['sigma_env_fitness', 'mut_prob', 'sigma_mov', 'sigma_mut']
         model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
         actual = [model._scaled_param(params_IR12[p], 1) for p in test_params]
-        expected = [params_IR12['sigma_env_trait'], params_IR12['mut_prob'], params_IR12['sigma_mov'], params_IR12['sigma_mut']]
+        expected = [params_IR12['sigma_env_fitness'], params_IR12['mut_prob'], params_IR12['sigma_mov'], params_IR12['sigma_mut']]
         assert actual == expected
 
     def test_count_neighbors(self, model_IR12):
         points = np.column_stack([[0, 4, 8, 12], [0, 2, 4, 6]])
+        traits = np.column_stack([[0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]])
         expected = [2, 3, 3, 2]
+        n_all, n_eff = model_IR12._count_neighbors(points, traits)
 
-        np.testing.assert_equal(model_IR12._count_neighbors(points), expected)
+        np.testing.assert_equal(n_all, expected)
+
+        assert n_all == pytest.approx(n_eff, 1)
 
     @pytest.mark.parametrize('model', ['IR12', 'DD03'])
     def test_evaluate_fitness(self, model, model_IR12, model_DD03):

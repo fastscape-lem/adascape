@@ -27,8 +27,22 @@ class Speciation:
     init_x_range_max = xs.variable(default=None, description="min range of individuals on x coordinate", static=True)
     init_y_range_min = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
     init_y_range_max = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
-    rho = xs.variable(default=0, description="Correlation between traits")
-
+    rho = xs.variable(default=0, description="Correlation coefficient between traits, 0 means that traits are "
+                                             "independent, where a value of rho different from 0 and "
+                                             "between -1 and 1, will determine the degree of correlation between"
+                                             "traits for all individuals")
+    sigma_comp_trait = xs.variable(default=1, description="trait mediated competition for a limiting resource,"
+                                                          " where the degree of trait similarity is given by "
+                                                          "this parameter. If its value is =>1 all individuals "
+                                                          "in the local neighbourhood are counted, but if its "
+                                                          "values is < 1 then only those individuals with "
+                                                          "similar trait values are counted.")
+    sigma_env_fitness = xs.variable(description="environmental fitness selectivity or width around optimal trait"
+                                                "value for each individual's trait")
+    sigma_mov = xs.variable(description="dispersal variability in spatial units")
+    sigma_mut = xs.variable(description="trait variability of mutated offspring")
+    mut_prob = xs.variable(description="mutation probability")
+    abundance = xs.variable(intent="out", description="number of individuals")
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
@@ -103,12 +117,6 @@ class IR12Speciation(Speciation):
     """
     nb_radius = xs.variable(description="fixed neighborhood radius")
     car_cap = xs.variable(description="carrying capacity within a neighborhood")
-    sigma_mov = xs.variable(description="controls dispersal variability")
-    sigma_mut = xs.variable(description="controls mutation variability")
-    sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
-    mut_prob = xs.variable(description="mutation probability")
-
-    abundance = xs.variable(intent="out", description="abundance")
 
     fitness = xs.on_demand(
         dims='ind',
@@ -121,10 +129,11 @@ class IR12Speciation(Speciation):
             "car_cap": self.car_cap,
             "sigma_mov": self.sigma_mov,
             "sigma_mut": self.sigma_mut,
-            "sigma_env_trait": self.sigma_env_trait,
+            "sigma_env_fitness": self.sigma_env_fitness,
             "random_seed": self.random_seed,
             "taxon_threshold": self.taxon_threshold,
-            "rho": self.rho
+            "rho": self.rho,
+            "sigma_comp_trait": self.sigma_comp_trait
         }
 
     def initialize(self):
@@ -179,21 +188,15 @@ class DD03Speciation(Speciation):
     birth_rate = xs.variable(default=1, description="birth rate of individuals")
     movement_rate = xs.variable(default=5, description="movement/dispersion rate of individuals")
     car_cap_max = xs.variable(description="maximum carrying capacity")
-    sigma_env_trait = xs.variable(description="controls strength of abiotic filtering")
-    mut_prob = xs.variable(description="mutation probability")
-    sigma_mut = xs.variable(description="controls mutation variability")
-    sigma_mov = xs.variable(description="controls movement/dispersal variability")
-    sigma_comp_trait = xs.variable(description="controls competition strength based on trait among individuals")
     sigma_comp_dist = xs.variable(description="controls competition strength based on spatial "
                                               "distance among individuals")
-    abundance = xs.variable(intent="out", description="abundance of individuals")
 
     def _get_model_params(self):
         return {
             'birth_rate': self.birth_rate,
             'movement_rate': self.movement_rate,
             'car_cap_max': self.car_cap_max,
-            'sigma_env_trait': self.sigma_env_trait,
+            'sigma_env_fitness': self.sigma_env_fitness,
             'mut_prob': self.mut_prob,
             'sigma_mut': self.sigma_mut,
             'sigma_mov': self.sigma_mov,
@@ -446,7 +449,7 @@ class FastscapePrecipitationTrait(TraitBase):
         return opt_trait
 
 
-woc_adaspec_model = basic_model.update_processes(
+adaspec_IR12_model = basic_model.update_processes(
     {'life': IR12Speciation,
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
@@ -458,7 +461,7 @@ woc_adaspec_model = basic_model.update_processes(
      'drainage': OrographicDrainageDischarge}
 )
 
-wic_adaspec_model = basic_model.update_processes(
+adaspec_DD03_model = basic_model.update_processes(
     {'life': DD03Speciation,
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
