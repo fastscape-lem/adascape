@@ -174,10 +174,7 @@ class SpeciationModelBase:
     def _compute_taxon_ids(self):
         """
         Method to define taxa based on individual's traits and their shared common ancestry
-        using 1) a hierarchical clustering algorithm from scipy.spatial.hierarchy or
-        2) spectral clustering algorithm. For hierarchical clustering a distance value
-        and distance metric needs to be specified,the latter by default is set to 'ward' distance.
-        For spectral clustering only distance value needs to be specified.
+        using a spectral clustering algorithm.
 
         Returns
         -------
@@ -494,27 +491,27 @@ class IR12SpeciationModel(SpeciationModelBase):
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', taxon_threshold=0.05, sigma_comp_trait=1.0,
-                 nb_radius=500., car_cap=1000., sigma_env_fitness=0.3, sigma_mov=5.,
+                 nb_radius=500., car_cap=1000., sigma_env_fitness=0.3, sigma_disp=5.,
                  sigma_mut=0.05, mut_prob=0.05, taxon_def='traits', rho=0):
-        """Initialization of speciation model without competition.
+        """Initialization of speciation model.
 
         Parameters
         ----------
         nb_radius: float
-            Fixed radius of the circles that define the neighborhood
-            around each individual.
+           Radius of the local neighbourhood centred at each individual.
         car_cap: int
-            Carrying capacity of group of individuals within the neighborhood area.
+           Carrying capacity of individuals in the local neighbourhood.
         sigma_env_fitness: float
-            Width of fitness curve.
-        sigma_mov: float
-            Width of dispersal curve.
+           environmental fitness variability controlling
+           the selection width around optimal trait value.
+        sigma_disp: float
+            dispersal variability of offspring in meters
         sigma_mut: float
-            Width of mutation curve.
+            trait variability of mutated offspring.
         mut_prob: float
-            Probability of mutation occurring in offspring.
+            probability that a given offspring will mutate or keep its ancestor trait value.
         sigma_comp_trait: float,
-            competition variability for trait distance between individuals. A value of 1 will consider that
+            competition variability for trait distance between individuals. A value of =>1 will consider that
             all individuals compete for resources in the giving neighborhood and a value of less than one,
             will count only those individuals with similar trait values to compete for the same resources.
         """
@@ -535,7 +532,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'nb_radius': nb_radius,
             'car_cap': car_cap,
             'sigma_env_fitness': sigma_env_fitness,
-            'sigma_mov': sigma_mov,
+            'sigma_disp': sigma_disp,
             'sigma_mut': sigma_mut,
             'mut_prob': mut_prob,
             'sigma_comp_trait': sigma_comp_trait
@@ -659,11 +656,11 @@ class IR12SpeciationModel(SpeciationModelBase):
         """
         if self._rescale_rates:
             mut_prob = self._scaled_param(self._params['mut_prob'], dt)
-            sigma_mov = self._scaled_param(self._params['sigma_mov'], dt)
+            sigma_disp = self._scaled_param(self._params['sigma_disp'], dt)
             sigma_mut = self._scaled_param(self._params['sigma_mut'], dt)
         else:
             mut_prob = self._params['mut_prob']
-            sigma_mov = self._params['sigma_mov']
+            sigma_disp = self._params['sigma_disp']
             sigma_mut = self._params['sigma_mut']
 
         n_offspring = self._individuals['n_offspring']
@@ -698,7 +695,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
                                                    new_individuals['y'],
-                                                   sigma_mov)
+                                                   sigma_disp)
             new_individuals['x'] = new_x
             new_individuals['y'] = new_y
 
@@ -734,10 +731,10 @@ class DD03SpeciationModel(SpeciationModelBase):
                  lifespan=None, random_seed=None, always_direct_parent=True,
                  on_extinction='warn', taxon_threshold=0.05,
                  birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_fitness=0.3,
-                 mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
+                 mut_prob=0.005, sigma_mut=0.05, sigma_disp=0.12, sigma_comp_trait=0.9,
                  sigma_comp_dist=0.19, taxon_def='traits', rho=0):
         """
-        Initialization of speciation model with competition.
+        Initialization of speciation model.
 
         Parameters
         ----------
@@ -753,7 +750,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             mutation probability
         sigma_mut : float
             variability of mutated trait
-        sigma_mov : float
+        sigma_disp : float
             variability of movement distance
         sigma_comp_trait : float
             competition variability for trait distance between individuals
@@ -780,7 +777,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             'sigma_env_fitness': sigma_env_fitness,
             'mut_prob': mut_prob,
             'sigma_mut': sigma_mut,
-            'sigma_mov': sigma_mov,
+            'sigma_disp': sigma_disp,
             'sigma_comp_trait': sigma_comp_trait,
             'sigma_comp_dist': sigma_comp_dist,
         })
@@ -838,11 +835,11 @@ class DD03SpeciationModel(SpeciationModelBase):
         # rescale parameters
         if self._rescale_rates:
             mut_prob = self._scaled_param(self._params['mut_prob'], dt)
-            sigma_mov = self._scaled_param(self._params['sigma_mov'], dt)
+            sigma_disp = self._scaled_param(self._params['sigma_disp'], dt)
             sigma_mut = self._scaled_param(self._params['sigma_mut'], dt)
         else:
             mut_prob = self._params['mut_prob']
-            sigma_mov = self._params['sigma_mov']
+            sigma_disp = self._params['sigma_disp']
             sigma_mut = self._params['sigma_mut']
 
         n_offspring = self._individuals['n_offspring']
@@ -883,7 +880,7 @@ class DD03SpeciationModel(SpeciationModelBase):
             # Movement
             new_x, new_y = self._mov_within_bounds(self._individuals['x'][events_i == 'M'],
                                                    self._individuals['y'][events_i == 'M'],
-                                                   sigma_mov)
+                                                   sigma_disp)
             extant['x'][events_i == 'M'] = new_x
             extant['y'][events_i == 'M'] = new_y
 
