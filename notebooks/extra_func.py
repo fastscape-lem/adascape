@@ -160,3 +160,24 @@ def plot_sol(dtf, environment, X):
     axs1[1, 0].set_ylabel('Trait', weight='bold')
     axs1[1, 1].set_xlabel('X', weight='bold')
     axs1[1, 0].set_xlabel('Time (generations)', weight='bold')
+
+
+def get_dataframe(ds):
+    """
+    function to convert xarray.Dataset with results of a couple eco-evolutionary model with FastScape LEM
+    """
+    individuals_data = {}
+    for i in range(ds.life__traits.shape[2]):
+        individuals_data['life__' + str(ds.trait[i].values.astype(str))] = ds.life__traits[:, :, i]
+    ds = ds.assign(individuals_data)
+    out_vars = ['life__taxon_id', 'life__ancestor_id', 'life__trait_elev', 'life__trait_prep', 'life__y', 'life__x']
+    out_ds = ds[out_vars]
+
+    dtf = (
+        out_ds
+            .to_dataframe()
+            .rename(columns=lambda name: name.replace('life__', ''))
+            .reset_index()
+            .dropna()
+    )
+    return dtf

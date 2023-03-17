@@ -18,8 +18,8 @@ class Speciation:
     opt_trait_funcs = xs.group_dict("opt_trait_funcs")
     init_abundance = xs.variable(description="initial number of individuals", static=True)
     random_seed = xs.variable(default=None, description="random number generator seed", static=True)
-    rescale_rates = xs.variable(default=False, description="whether to rescale rates", static=False)
-    taxon_threshold = xs.variable(default=0.05, description="threshold used to construct taxon clusters")
+    taxon_threshold = xs.variable(default=0.05, description="threshold value used in our taxon definition algorithm "
+                                                            "to split a group of individuals into two taxon clusters")
     taxon_def = xs.variable(default='traits', description="Taxon definition based on common ancestry and traits ("
                                                           "'traits') or common ancestry, traits and location ("
                                                           "'traits_location')")
@@ -29,17 +29,17 @@ class Speciation:
     init_y_range_max = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
     rho = xs.variable(default=0, description="Correlation coefficient between traits, 0 means that traits are "
                                              "independent, where a value of rho different from 0 and "
-                                             "between -1 and 1, will determine the degree of correlation between"
+                                             "between -1 and 1, will determine the degree of correlation between "
                                              "traits for all individuals")
-    sigma_comp_trait = xs.variable(default=1, description="trait mediated competition for a limiting resource,"
-                                                          " where the degree of trait similarity is given by "
+    sigma_comp_trait = xs.variable(default=1, description="trait-mediated competition for a limiting resource, "
+                                                          "where the degree of trait similarity is given by "
                                                           "this parameter. If its value is =>1 all individuals "
                                                           "in the local neighbourhood are counted, but if its "
                                                           "values is < 1 then only those individuals with "
                                                           "similar trait values are counted.")
-    sigma_env_fitness = xs.variable(description="environmental fitness selectivity or width around optimal trait"
+    sigma_env_fitness = xs.variable(description="environmental fitness selectivity or width around optimal trait "
                                                 "value for each individual's trait")
-    sigma_mov = xs.variable(description="dispersal variability in spatial units")
+    sigma_disp = xs.variable(description="dispersal variability in meters")
     sigma_mut = xs.variable(description="trait variability of mutated offspring")
     mut_prob = xs.variable(description="mutation probability")
     abundance = xs.variable(intent="out", description="number of individuals")
@@ -61,7 +61,7 @@ class Speciation:
     )
     traits = xs.on_demand(
         dims=('ind', 'trait'),
-        description="individuals'  trait values"
+        description="individuals' trait values"
     )
     n_offspring = xs.on_demand(
         dims='ind',
@@ -127,7 +127,7 @@ class IR12Speciation(Speciation):
         return {
             "nb_radius": self.nb_radius,
             "car_cap": self.car_cap,
-            "sigma_mov": self.sigma_mov,
+            "sigma_disp": self.sigma_disp,
             "sigma_mut": self.sigma_mut,
             "sigma_env_fitness": self.sigma_env_fitness,
             "random_seed": self.random_seed,
@@ -144,7 +144,6 @@ class IR12Speciation(Speciation):
 
         self._model = IR12SpeciationModel(
             X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
-            lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
@@ -199,7 +198,7 @@ class DD03Speciation(Speciation):
             'sigma_env_fitness': self.sigma_env_fitness,
             'mut_prob': self.mut_prob,
             'sigma_mut': self.sigma_mut,
-            'sigma_mov': self.sigma_mov,
+            'sigma_disp': self.sigma_disp,
             'sigma_comp_trait': self.sigma_comp_trait,
             'sigma_comp_dist': self.sigma_comp_dist,
             "random_seed": self.random_seed,
@@ -215,7 +214,6 @@ class DD03Speciation(Speciation):
 
         self._model = DD03SpeciationModel(
             X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
-            lifespan=None,
             always_direct_parent=False,
             **self._get_model_params()
         )
