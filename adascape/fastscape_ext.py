@@ -24,9 +24,9 @@ class Speciation:
                                                           "'traits') or common ancestry, traits and location ("
                                                           "'traits_location')")
     init_x_range_min = xs.variable(default=None, description="min range of individuals on x coordinate", static=True)
-    init_x_range_max = xs.variable(default=None, description="min range of individuals on x coordinate", static=True)
+    init_x_range_max = xs.variable(default=None, description="max range of individuals on x coordinate", static=True)
     init_y_range_min = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
-    init_y_range_max = xs.variable(default=None, description="min range of individuals on y coordinate", static=True)
+    init_y_range_max = xs.variable(default=None, description="max range of individuals on y coordinate", static=True)
     rho = xs.variable(default=0, description="Correlation coefficient between traits, 0 means that traits are "
                                              "independent, where a value of rho different from 0 and "
                                              "between -1 and 1, will determine the degree of correlation between "
