@@ -1,7 +1,7 @@
-# adascape: Adaptive speciation and landscape evolution model
+# AdaScape: Adaptive speciation and landscape evolution model
 
-The "adascape" package contain two simple adaptive speciation models written
-in Python that can be easily coupled with a landscape evolution model (fastscape).
+The "AdaScape" package contains a simple adaptive speciation models written
+in Python that can be easily coupled with a landscape evolution model (FastScape).
 
 ## Install
 

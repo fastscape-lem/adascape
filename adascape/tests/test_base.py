@@ -5,14 +5,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from adascape.base import IR12SpeciationModel, DD03SpeciationModel
+from adascape.base import IR12SpeciationModel
 from adascape.fastscape_ext import FastscapeElevationTrait
 
 
 @pytest.fixture
 def params_IR12():
     return {
-        'lifespan': 1,
         'random_seed': 1234,
         'rho': 0,
         'always_direct_parent': True,
@@ -21,32 +20,10 @@ def params_IR12():
         'car_cap': 5,
         'sigma_comp_trait': 1.0,
         'sigma_env_fitness': 0.5,
-        'sigma_mov': 4,
+        'sigma_disp': 4,
         'sigma_mut': 0.5,
         'mut_prob': 0.04,
         'on_extinction': 'ignore',
-        'taxon_def': 'traits'
-    }
-
-
-@pytest.fixture
-def params_DD03():
-    return {
-        'lifespan': 1,
-        'random_seed': 1234,
-        'rho': 0,
-        'always_direct_parent': True,
-        'taxon_threshold': 0.05,
-        'sigma_env_fitness': 0.5,
-        'sigma_mov': 4,
-        'sigma_mut': 0.5,
-        'mut_prob': 0.04,
-        'birth_rate': 1,
-        'movement_rate': 5,
-        'car_cap_max': 100,
-        'sigma_comp_trait': 0.9,
-        'sigma_comp_dist': 0.2,
-        'on_extinction': 'warn',
         'taxon_def': 'traits'
     }
 
@@ -87,22 +64,8 @@ def model_IR12(params_IR12, grid, trait_funcs):
 
 
 @pytest.fixture
-def model_DD03(params_DD03, grid, trait_funcs):
-    X, Y = grid
-    init_trait_funcs, opt_trait_funcs = trait_funcs
-    return DD03SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_DD03)
-
-
-@pytest.fixture
 def initialized_model_IR12(model_IR12):
     m = copy.deepcopy(model_IR12)
-    m.initialize()
-    return m
-
-
-@pytest.fixture
-def initialized_model_DD03(model_DD03):
-    m = copy.deepcopy(model_DD03)
     m.initialize()
     return m
 
@@ -112,7 +75,6 @@ def model_IR12_repr():
     return dedent("""\
     <IR12SpeciationModel (individuals: not initialized)>
     Parameters:
-        lifespan: 1
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
@@ -122,7 +84,7 @@ def model_IR12_repr():
         nb_radius: 5
         car_cap: 5
         sigma_env_fitness: 0.5
-        sigma_mov: 4
+        sigma_disp: 4
         sigma_mut: 0.5
         mut_prob: 0.04
         sigma_comp_trait: 1.0
@@ -134,7 +96,6 @@ def initialized_model_IR12_repr():
     return dedent("""\
     <IR12SpeciationModel (individuals: 10)>
     Parameters:
-        lifespan: 1
         random_seed: 1234
         always_direct_parent: True
         on_extinction: ignore
@@ -144,58 +105,10 @@ def initialized_model_IR12_repr():
         nb_radius: 5
         car_cap: 5
         sigma_env_fitness: 0.5
-        sigma_mov: 4
+        sigma_disp: 4
         sigma_mut: 0.5
         mut_prob: 0.04
         sigma_comp_trait: 1.0
-    """)
-
-
-@pytest.fixture(scope='session')
-def model_DD03_repr():
-    return dedent("""\
-    <DD03SpeciationModel (individuals: not initialized)>
-    Parameters:
-        lifespan: 1
-        random_seed: 1234
-        always_direct_parent: True
-        on_extinction: warn
-        taxon_threshold: 0.05
-        taxon_def: traits
-        rho: 0
-        birth_rate: 1
-        movement_rate: 5
-        car_cap_max: 100
-        sigma_env_fitness: 0.5
-        mut_prob: 0.04
-        sigma_mut: 0.5
-        sigma_mov: 4
-        sigma_comp_trait: 0.9
-        sigma_comp_dist: 0.2
-    """)
-
-
-@pytest.fixture(scope='session')
-def initialized_model_DD03_repr():
-    return dedent("""\
-    <DD03SpeciationModel (individuals: 10)>
-    Parameters:
-        lifespan: 1
-        random_seed: 1234
-        always_direct_parent: True
-        on_extinction: warn
-        taxon_threshold: 0.05
-        taxon_def: traits
-        rho: 0
-        birth_rate: 1
-        movement_rate: 5
-        car_cap_max: 100
-        sigma_env_fitness: 0.5
-        mut_prob: 0.04
-        sigma_mut: 0.5
-        sigma_mov: 4
-        sigma_comp_trait: 0.9
-        sigma_comp_dist: 0.2
     """)
 
 
@@ -204,7 +117,7 @@ def _in_bounds(grid_coord, pop_coord):
             and pop_coord.max() <= grid_coord.max())
 
 
-class TestParapatricSpeciationModel:
+class TestIR12SpeciationModel:
 
     def test_constructor(self, grid, trait_funcs):
 
@@ -222,9 +135,8 @@ class TestParapatricSpeciationModel:
         m2 = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, random_seed=0)
         np.testing.assert_equal(m2._rng.__getstate__()['state'], rs.__getstate__()['state'])
 
-    def test_params(self, params_IR12, model_IR12, params_DD03, model_DD03):
+    def test_params(self, params_IR12, model_IR12):
         assert model_IR12.params == params_IR12
-        assert model_DD03.params == params_DD03
 
     def test_initialize_population(self, grid, initialized_model_IR12):
         assert initialized_model_IR12.abundance == 10
@@ -281,22 +193,6 @@ class TestParapatricSpeciationModel:
         actual = initialized_model_IR12.to_dataframe(varnames=['x', 'y'])
         pd.testing.assert_frame_equal(actual, expected)
 
-    def test_scaled_params(self, model_IR12, params_IR12):
-        test_params = ['sigma_env_fitness', 'mut_prob', 'sigma_mov', 'sigma_mut']
-        rescaled_params = [model_IR12._scaled_param(params_IR12[p], 1) for p in test_params]
-        expected = [0.5, 0.04, 4.0, 0.5]
-        assert rescaled_params == expected
-
-    def test_scaled_params_not_effective(self, params_IR12, grid, trait_funcs):
-        X, Y = grid
-        init_trait_funcs, opt_trait_funcs = trait_funcs
-        params_IR12.pop('lifespan')
-        test_params = ['sigma_env_fitness', 'mut_prob', 'sigma_mov', 'sigma_mut']
-        model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
-        actual = [model._scaled_param(params_IR12[p], 1) for p in test_params]
-        expected = [params_IR12['sigma_env_fitness'], params_IR12['mut_prob'], params_IR12['sigma_mov'], params_IR12['sigma_mut']]
-        assert actual == expected
-
     def test_count_neighbors(self, model_IR12):
         points = np.column_stack([[0, 4, 8, 12], [0, 2, 4, 6]])
         traits = np.column_stack([[0.5, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]])
@@ -307,8 +203,8 @@ class TestParapatricSpeciationModel:
 
         assert n_all == pytest.approx(n_eff, 1)
 
-    @pytest.mark.parametrize('model', ['IR12', 'DD03'])
-    def test_evaluate_fitness(self, model, model_IR12, model_DD03):
+    @pytest.mark.parametrize('model', ['IR12'])
+    def test_evaluate_fitness(self, model, model_IR12):
 
         if model == 'IR12':
             model_IR12.initialize()
@@ -316,14 +212,6 @@ class TestParapatricSpeciationModel:
             model_IR12.evaluate_fitness(1)
             eval_pop = model_IR12.individuals.copy()
             for k in ['fitness', 'n_offspring']:
-                assert k in eval_pop
-
-        elif model == 'DD03':
-            model_DD03.initialize()
-            init_pop = model_DD03.individuals.copy()
-            model_DD03.evaluate_fitness(1)
-            eval_pop = model_DD03.individuals
-            for k in ['events_i', 'death_i']:
                 assert k in eval_pop
 
         assert init_pop['n_offspring'].max() == 0
@@ -449,13 +337,9 @@ class TestParapatricSpeciationModel:
             assert next[k].size == 0
 
     def test_repr(self, model_IR12, model_IR12_repr,
-                  initialized_model_IR12, initialized_model_IR12_repr,
-                  model_DD03, model_DD03_repr, initialized_model_DD03,
-                  initialized_model_DD03_repr):
+                  initialized_model_IR12, initialized_model_IR12_repr):
         assert repr(model_IR12) == model_IR12_repr
         assert repr(initialized_model_IR12) == initialized_model_IR12_repr
-        assert repr(model_DD03) == model_DD03_repr
-        assert repr(initialized_model_DD03) == initialized_model_DD03_repr
 
     @pytest.mark.parametrize('taxon_def', ['traits', 'traits_location'])
     def test_taxon_def(self, grid, trait_funcs, taxon_def, num_gen=10, dt=1):

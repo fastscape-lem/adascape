@@ -5,38 +5,10 @@ import pytest
 
 pytest.importorskip("fastscape")  # isort:skip
 
-from adascape.fastscape_ext import (IR12Speciation, DD03Speciation,
+from adascape.fastscape_ext import (IR12Speciation,
                                     CompoundEnvironment, ElevationEnvField, PrecipitationField,
                                     FastscapeElevationTrait, FastscapePrecipitationTrait,
-                                    adaspec_IR12_model, adaspec_DD03_model)
-
-
-@pytest.fixture
-def specDD03_process(trait_funcs):
-    params = {
-        'init_abundance': 10,
-        'birth_rate': 1,
-        'movement_rate': 5,
-        'car_cap_max': 100,
-        'mut_prob': 1.0,
-        'sigma_env_fitness': 0.5,
-        'sigma_mov': 4,
-        'sigma_mut': 0.5,
-        'random_seed': 1234,
-        'rescale_rates': True,
-        'sigma_comp_trait': 0.9,
-        'sigma_comp_dist': 0.2,
-        'taxon_threshold': 0.05,
-        'rho': 0
-    }
-
-    x = np.linspace(0, 20, 10)
-    y = np.linspace(0, 10, 20)
-    init_trait_funcs, opt_trait_funcs = trait_funcs
-    return DD03Speciation(env_field=env_field, grid_x=x, grid_y=y,
-                          init_trait_funcs=init_trait_funcs,
-                          opt_trait_funcs=opt_trait_funcs,
-                          **params)
+                                    adaspec_IR12_model)
 
 
 @pytest.fixture
@@ -47,10 +19,9 @@ def specIR12_process(trait_funcs):
         'car_cap': 10,
         'mut_prob': 1.0,
         'sigma_env_fitness': 0.5,
-        'sigma_mov': 4,
+        'sigma_disp': 4,
         'sigma_mut': 0.5,
         'random_seed': 1234,
-        'rescale_rates': True,
         'taxon_threshold': 0.05,
         'rho': 0
     }
@@ -95,12 +66,10 @@ def trait_funcs(env_field):
     return init_trait_funcs, opt_trait_funcs
 
 
-@pytest.mark.parametrize('speciation', ['IR12', 'DD03'])
-def test_parapatric_speciation(speciation, specIR12_process, specDD03_process):
+@pytest.mark.parametrize('speciation', ['IR12'])
+def test_speciation(speciation, specIR12_process):
     if speciation == 'IR12':
         spec = copy.deepcopy(specIR12_process)
-    elif speciation == 'DD03':
-        spec = copy.deepcopy(specDD03_process)
     spec.initialize()
     spec.run_step(1)
 
@@ -120,7 +89,7 @@ def test_parapatric_speciation(speciation, specIR12_process, specDD03_process):
 
 
 @pytest.mark.parametrize('field', ['elev_field01', 'elev_field02'])
-def test_parapatric_environment_elevation(field):
+def test_environment_elevation(field):
     elev = np.random.uniform(0, 1, (1, 20, 10))
 
     if field == 'elev_field01':
@@ -134,7 +103,7 @@ def test_parapatric_environment_elevation(field):
 
 
 @pytest.mark.parametrize('field', ['precip_field01', 'precip_field02'])
-def test_parapatric_environment_precipitation(field):
+def test_environment_precipitation(field):
     precip = np.random.uniform(0, 1, (1, 20, 10))
 
     if field == 'precip_field01':
@@ -168,5 +137,3 @@ def test_compound_environment():
 def test_paraspec_model():
     assert isinstance(adaspec_IR12_model["life"], IR12Speciation)
     assert isinstance(adaspec_IR12_model["life_env"], CompoundEnvironment)
-    assert isinstance(adaspec_DD03_model["life"], DD03Speciation)
-    assert isinstance(adaspec_DD03_model["life_env"], CompoundEnvironment)

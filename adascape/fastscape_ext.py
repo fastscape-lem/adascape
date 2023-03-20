@@ -3,7 +3,6 @@ from fastscape.processes import SurfaceTopography, UniformRectilinearGrid2D
 import numpy as np
 import xsimlab as xs
 from adascape.base import IR12SpeciationModel
-from adascape.base import DD03SpeciationModel
 from orographic_precipitation.fastscape_ext import OrographicPrecipitation, OrographicDrainageDischarge
 
 
@@ -177,73 +176,6 @@ class IR12Speciation(Speciation):
     @fitness.compute
     def _get_fitness(self):
         return self.individuals["fitness"]
-
-
-@xs.process
-class DD03Speciation(Speciation):
-    """Doebeli & Dieckmann (2003) Speciation model as a fastscape extension.
-    For more info, see :class:`adascape.base.DD03SpeciationModel`.
-    """
-    birth_rate = xs.variable(default=1, description="birth rate of individuals")
-    movement_rate = xs.variable(default=5, description="movement/dispersion rate of individuals")
-    car_cap_max = xs.variable(description="maximum carrying capacity")
-    sigma_comp_dist = xs.variable(description="controls competition strength based on spatial "
-                                              "distance among individuals")
-
-    def _get_model_params(self):
-        return {
-            'birth_rate': self.birth_rate,
-            'movement_rate': self.movement_rate,
-            'car_cap_max': self.car_cap_max,
-            'sigma_env_fitness': self.sigma_env_fitness,
-            'mut_prob': self.mut_prob,
-            'sigma_mut': self.sigma_mut,
-            'sigma_disp': self.sigma_disp,
-            'sigma_comp_trait': self.sigma_comp_trait,
-            'sigma_comp_dist': self.sigma_comp_dist,
-            "random_seed": self.random_seed,
-            "taxon_threshold": self.taxon_threshold,
-            "rho": self.rho
-        }
-
-    def initialize(self):
-        X, Y = np.meshgrid(self.grid_x, self.grid_y)
-
-        trait_names = [k[0] for k in self.init_trait_funcs]
-        self.trait = np.array(trait_names, dtype="S")
-
-        self._model = DD03SpeciationModel(
-            X, Y, self.init_trait_funcs, self.opt_trait_funcs, self.init_abundance,
-            always_direct_parent=False,
-            **self._get_model_params()
-        )
-
-        if self.init_x_range_min is None and self.init_x_range_max is None:
-            init_x_range = None
-        else:
-            init_x_range = (self.init_x_range_min, self.init_x_range_max)
-
-        if self.init_y_range_min is None and self.init_y_range_max is None:
-            init_y_range = None
-        else:
-            init_y_range = (self.init_y_range_min, self.init_y_range_max)
-
-        self._model.initialize(init_x_range, init_y_range)
-
-    @xs.runtime(args='step_delta')
-    def run_step(self, dt):
-        # reset individuals "cache"
-        self._individuals = None
-
-        # maybe update model parameters
-        self._model.params.update(self._get_model_params())
-
-        self.abundance = self._model.abundance
-        self._model.evaluate_fitness(dt)
-
-    @xs.runtime(args='step_delta')
-    def finalize_step(self, dt):
-        self._model.update_individuals(dt)
 
 
 @xs.process
@@ -459,15 +391,3 @@ adaspec_IR12_model = basic_model.update_processes(
      'drainage': OrographicDrainageDischarge}
 )
 
-adaspec_DD03_model = basic_model.update_processes(
-    {'life': DD03Speciation,
-     'trait_elev': FastscapeElevationTrait,
-     'trait_prep': FastscapePrecipitationTrait,
-     'life_env': CompoundEnvironment,
-     'elev_field': ElevationEnvField,
-     'prec_field': PrecipitationField,
-     'random': RandomSeedFederation,
-     'orographic': OrographicPrecipitation,
-     'drainage': OrographicDrainageDischarge
-     }
-)
