@@ -468,27 +468,27 @@ class IR12SpeciationModel(SpeciationModelBase):
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
                  random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', taxon_threshold=0.05, sigma_comp_trait=1.0,
-                 nb_radius=500., car_cap=1000., sigma_env_fitness=0.3, sigma_disp=5.,
-                 sigma_mut=0.05, mut_prob=0.05, taxon_def='traits', rho=0):
+                 on_extinction='warn', taxon_threshold=0.05, sigma_u=1.0,
+                 r=500., K=1000., sigma_f=0.3, sigma_d=5.,
+                 sigma_m=0.05, p_m=0.05, taxon_def='traits', rho=0):
         """Initialization of speciation model.
 
         Parameters
         ----------
-        nb_radius: float
+        r: float
            Radius of the local neighbourhood centred at each individual.
-        car_cap: int
+        K: int
            Carrying capacity of individuals in the local neighbourhood.
-        sigma_env_fitness: float
+        sigma_f: float
            environmental fitness variability controlling
            the selection width around optimal trait value.
-        sigma_disp: float
+        sigma_d: float
             dispersal variability of offspring in meters
-        sigma_mut: float
+        sigma_m: float
             trait variability of mutated offspring.
-        mut_prob: float
+        p_m: float
             probability that a given offspring will mutate or keep its ancestor trait value.
-        sigma_comp_trait: float,
+        sigma_u: float,
             competition variability for trait distance between individuals. A value of =>1 will consider that
             all individuals compete for resources in the giving neighborhood and a value of less than one,
             will count only those individuals with similar trait values to compete for the same resources.
@@ -506,21 +506,21 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         # default parameter values
         self._params.update({
-            'nb_radius': nb_radius,
-            'car_cap': car_cap,
-            'sigma_env_fitness': sigma_env_fitness,
-            'sigma_disp': sigma_disp,
-            'sigma_mut': sigma_mut,
-            'mut_prob': mut_prob,
-            'sigma_comp_trait': sigma_comp_trait
+            'r': r,
+            'K': K,
+            'sigma_f': sigma_f,
+            'sigma_d': sigma_d,
+            'sigma_m': sigma_m,
+            'p_m': p_m,
+            'sigma_u': sigma_u
         })
 
     def _count_neighbors(self, locations, traits):
         """
         count number of neighbouring individual in a given radius
-        either all of them when sigma_comp_trait => 1 or only those
-        with similar trait values if sigma_comp_trait < 1.
-        The parameter sigma_comp_trait thus control the effective number of
+        either all of them when sigma_u => 1 or only those
+        with similar trait values if sigma_u < 1.
+        The parameter sigma_u thus control the effective number of
         individuals that compete for the same limiting resource (K).
 
         Parameters
@@ -535,7 +535,7 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         """
         index = spatial.cKDTree(locations)
-        neighbors = index.query_ball_tree(index, self._params['nb_radius'])
+        neighbors = index.query_ball_tree(index, self._params['r'])
 
         n_eff = np.zeros(traits.shape[0])
         for i, j in enumerate(neighbors):
@@ -543,7 +543,7 @@ class IR12SpeciationModel(SpeciationModelBase):
                 delta_trait_ij = traits[i, np.newaxis] - traits[j, np.newaxis]
             else:
                 delta_trait_ij = traits[i, np.newaxis] - traits[j, :]
-            alpha_ij = np.prod(np.exp(-0.5 * delta_trait_ij ** 2 / self.params['sigma_comp_trait'] ** 2), axis=1)
+            alpha_ij = np.prod(np.exp(-0.5 * delta_trait_ij ** 2 / self.params['sigma_u'] ** 2), axis=1)
             n_eff[i] = np.sum(alpha_ij)
         n_all = np.array([len(nb) for nb in neighbors])
         return n_all, n_eff
@@ -571,10 +571,10 @@ class IR12SpeciationModel(SpeciationModelBase):
             # compute offspring sizes
             n_all, n_eff = self._count_neighbors(individual_positions, self._individuals['trait'])
 
-            r_d = self._params['car_cap'] / n_eff
+            r_d = self._params['K'] / n_eff
 
             delta_trait_i = self._individuals['trait'] - opt_trait
-            diag_val = np.ones(self._individuals['trait'].shape[1]) * self._params['sigma_env_fitness']
+            diag_val = np.ones(self._individuals['trait'].shape[1]) * self._params['sigma_f']
             sigma_diag = np.diag(diag_val ** 2)
             sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
             sigma_i = sigma_diag + sigma_offdiag
@@ -630,17 +630,17 @@ class IR12SpeciationModel(SpeciationModelBase):
             new_individuals['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
             # mutate offspring
-            to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < self._params['mut_prob']
+            to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < self._params['p_m']
             for i in range(new_individuals['trait'].shape[1]):
                 new_individuals['trait'][:, i] = np.where(to_mutate,
                                                           self._mutate_trait(new_individuals['trait'][:, i],
-                                                                             self._params['sigma_mut']),
+                                                                             self._params['sigma_m']),
                                                           new_individuals['trait'][:, i])
 
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
                                                    new_individuals['y'],
-                                                   self._params['sigma_disp'])
+                                                   self._params['sigma_d'])
             new_individuals['x'] = new_x
             new_individuals['y'] = new_y
 

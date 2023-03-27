@@ -16,13 +16,13 @@ def params_IR12():
         'rho': 0,
         'always_direct_parent': True,
         'taxon_threshold': 0.05,
-        'nb_radius': 5,
-        'car_cap': 5,
-        'sigma_comp_trait': 1.0,
-        'sigma_env_fitness': 0.5,
-        'sigma_disp': 4,
-        'sigma_mut': 0.5,
-        'mut_prob': 0.04,
+        'r': 5,
+        'K': 5,
+        'sigma_u': 1.0,
+        'sigma_f': 0.5,
+        'sigma_d': 4,
+        'sigma_m': 0.5,
+        'p_m': 0.04,
         'on_extinction': 'ignore',
         'taxon_def': 'traits'
     }
@@ -81,13 +81,13 @@ def model_IR12_repr():
         taxon_threshold: 0.05
         taxon_def: traits
         rho: 0
-        nb_radius: 5
-        car_cap: 5
-        sigma_env_fitness: 0.5
-        sigma_disp: 4
-        sigma_mut: 0.5
-        mut_prob: 0.04
-        sigma_comp_trait: 1.0
+        r: 5
+        K: 5
+        sigma_f: 0.5
+        sigma_d: 4
+        sigma_m: 0.5
+        p_m: 0.04
+        sigma_u: 1.0
     """)
 
 
@@ -102,13 +102,13 @@ def initialized_model_IR12_repr():
         taxon_threshold: 0.05
         taxon_def: traits
         rho: 0
-        nb_radius: 5
-        car_cap: 5
-        sigma_env_fitness: 0.5
-        sigma_disp: 4
-        sigma_mut: 0.5
-        mut_prob: 0.04
-        sigma_comp_trait: 1.0
+        r: 5
+        K: 5
+        sigma_f: 0.5
+        sigma_d: 4
+        sigma_m: 0.5
+        p_m: 0.04
+        sigma_u: 1.0
     """)
 
 
@@ -247,8 +247,8 @@ class TestIR12SpeciationModel:
 
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff ** 2))
-        scaled_sigma_mut = model_IR12.params['sigma_mut'] * np.sqrt(model_IR12.params['mut_prob'])
-        assert trait_rms == pytest.approx(scaled_sigma_mut, 0.1, 0.02)
+        scaled_sigma_m = model_IR12.params['sigma_m'] * np.sqrt(model_IR12.params['p_m'])
+        assert trait_rms == pytest.approx(scaled_sigma_m, 0.1, 0.02)
 
         # test reset fitness data
         for k in ['fitness', 'n_offspring']:
@@ -288,14 +288,14 @@ class TestIR12SpeciationModel:
             assert parents2.values.max() == parents1.values.max()
             assert parents3.values.max() == parents2.values.max()
 
-    @pytest.mark.parametrize('car_cap_mul,on_extinction', [
+    @pytest.mark.parametrize('K_mul,on_extinction', [
         (0., 'raise'),
         (0., 'warn'),
         (0., 'ignore'),
     ])
     def test_update_individuals_extinction(self,
                                            initialized_model_IR12,
-                                           car_cap_mul,
+                                           K_mul,
                                            on_extinction):
 
         subset_keys = ('taxon_id', 'ancestor_id', 'x', 'y', 'trait')
@@ -307,7 +307,7 @@ class TestIR12SpeciationModel:
         initialized_model_IR12._params['on_extinction'] = on_extinction
 
         # no offspring via either r_d values = 0 or very low fitness values
-        initialized_model_IR12._params['car_cap'] *= car_cap_mul
+        initialized_model_IR12._params['K'] *= K_mul
 
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):

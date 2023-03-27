@@ -30,17 +30,17 @@ class Speciation:
                                              "independent, where a value of rho different from 0 and "
                                              "between -1 and 1, will determine the degree of correlation between "
                                              "traits for all individuals")
-    sigma_comp_trait = xs.variable(default=1, description="trait-mediated competition for a limiting resource, "
-                                                          "where the degree of trait similarity is given by "
-                                                          "this parameter. If its value is =>1 all individuals "
-                                                          "in the local neighbourhood are counted, but if its "
-                                                          "values is < 1 then only those individuals with "
-                                                          "similar trait values are counted.")
-    sigma_env_fitness = xs.variable(description="environmental fitness selectivity or width around optimal trait "
-                                                "value for each individual's trait")
-    sigma_disp = xs.variable(description="dispersal variability in meters")
-    sigma_mut = xs.variable(description="trait variability of mutated offspring")
-    mut_prob = xs.variable(description="mutation probability")
+    sigma_u = xs.variable(default=1, description="trait-mediated competition for a limiting resource, "
+                                                 "where the degree of trait similarity is given by "
+                                                 "this parameter. If its value is =>1 all individuals "
+                                                 "in the local neighbourhood are counted, but if its "
+                                                 "values is < 1 then only those individuals with "
+                                                 "similar trait values are counted.")
+    sigma_f = xs.variable(description="environmental fitness selectivity or width around optimal trait "
+                                      "value for each individual's trait")
+    sigma_d = xs.variable(description="dispersal variability in meters")
+    sigma_m = xs.variable(description="trait variability of mutated offspring")
+    p_m = xs.variable(description="mutation probability")
     abundance = xs.variable(intent="out", description="number of individuals")
     env_field = xs.variable(dims=(('field', "y", "x"), ("y", "x")))
 
@@ -114,8 +114,8 @@ class IR12Speciation(Speciation):
     """Irwin (2012) Speciation model as a fastscape extension.
     For more info, see :class:`adascape.base.IR12SpeciationModel`.
     """
-    nb_radius = xs.variable(description="fixed neighborhood radius")
-    car_cap = xs.variable(description="carrying capacity within a neighborhood")
+    r = xs.variable(description="fixed neighborhood radius")
+    K = xs.variable(description="carrying capacity within a neighborhood")
 
     fitness = xs.on_demand(
         dims='ind',
@@ -124,15 +124,15 @@ class IR12Speciation(Speciation):
 
     def _get_model_params(self):
         return {
-            "nb_radius": self.nb_radius,
-            "car_cap": self.car_cap,
-            "sigma_disp": self.sigma_disp,
-            "sigma_mut": self.sigma_mut,
-            "sigma_env_fitness": self.sigma_env_fitness,
+            "r": self.r,
+            "K": self.K,
+            "sigma_d": self.sigma_d,
+            "sigma_m": self.sigma_m,
+            "sigma_f": self.sigma_f,
             "random_seed": self.random_seed,
             "taxon_threshold": self.taxon_threshold,
             "rho": self.rho,
-            "sigma_comp_trait": self.sigma_comp_trait
+            "sigma_u": self.sigma_u
         }
 
     def initialize(self):
@@ -379,7 +379,7 @@ class FastscapePrecipitationTrait(TraitBase):
         return opt_trait
 
 
-adaspec_IR12_model = basic_model.update_processes(
+adascape_IR12_model = basic_model.update_processes(
     {'life': IR12Speciation,
      'trait_elev': FastscapeElevationTrait,
      'trait_prep': FastscapePrecipitationTrait,
@@ -390,4 +390,3 @@ adaspec_IR12_model = basic_model.update_processes(
      'orographic': OrographicPrecipitation,
      'drainage': OrographicDrainageDischarge}
 )
-

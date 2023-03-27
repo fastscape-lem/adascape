@@ -14,8 +14,8 @@ from adascape.fastscape_ext import FastscapeElevationTrait
 
 
 def single_model_run(environment, x, y, num_gen=500, init_abundance=10, dt=1e0,
-                     mut_prob=0.005, sigma_mut=0.05, sigma_env_fitness=0.2,
-                     sigma_disp=30, sigma_comp_trait=1.0, nb_radius=50, car_cap=50,
+                     p_m=0.005, sigma_m=0.05, sigma_f=0.2,
+                     sigma_d=30, sigma_u=1.0, r=50, K=50,
                      random_seed=1234, taxon_threshold=0.075):
     """
     Function to execute a single run of the speciation model.
@@ -34,20 +34,20 @@ def single_model_run(environment, x, y, num_gen=500, init_abundance=10, dt=1e0,
                     initial number of individuals.
     dt: float
         time step of the simulation
-    sigma_env_fitness: float
+    sigma_f: float
                        environmental fitness variability controlling
                        the selection width around optimal trait value.
-    mut_prob: float
+    p_m: float
               probability that a given ofspring will mutate or keep its ancestor trait value.
-    sigma_mut: float
+    sigma_m: float
                trait variability of mutated offspring.
-    sigma_disp: float
+    sigma_d: float
                dispersal variability of offspring in meters
-    sigma_comp_trait: float
+    sigma_u: float
                       competition variability based on trait among individuals
-    nb_radius: int or float
+    r: int or float
                Radius of the local neighbourhood centred at each individual.
-    car_cap: int
+    K: int
              Carrying capacity of individuals in the local neighbourhood
     random_seed: int
                  seed of the random number generator
@@ -88,9 +88,9 @@ def single_model_run(environment, x, y, num_gen=500, init_abundance=10, dt=1e0,
     # define a speciation model using the specified parameter values
     model = IR12SpeciationModel(grid_x=x, grid_y=y, init_trait_funcs=init_trait_funcs,
                                 opt_trait_funcs=opt_trait_funcs, init_abundance=init_abundance,
-                                nb_radius=nb_radius, car_cap=car_cap, taxon_threshold=taxon_threshold,
-                                sigma_env_fitness=sigma_env_fitness, sigma_comp_trait=sigma_comp_trait,
-                                sigma_disp=sigma_disp, sigma_mut=sigma_mut, mut_prob=mut_prob,
+                                r=r, K=K, taxon_threshold=taxon_threshold,
+                                sigma_f=sigma_f, sigma_u=sigma_u,
+                                sigma_d=sigma_d, sigma_m=sigma_m, p_m=p_m,
                                 random_seed=random_seed)
     print(model)
     # initialize the speciation model

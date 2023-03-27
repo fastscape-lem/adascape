@@ -8,19 +8,19 @@ pytest.importorskip("fastscape")  # isort:skip
 from adascape.fastscape_ext import (IR12Speciation,
                                     CompoundEnvironment, ElevationEnvField, PrecipitationField,
                                     FastscapeElevationTrait, FastscapePrecipitationTrait,
-                                    adaspec_IR12_model)
+                                    adascape_IR12_model)
 
 
 @pytest.fixture
 def specIR12_process(trait_funcs):
     params = {
         'init_abundance': 10,
-        'nb_radius': 5,
-        'car_cap': 10,
-        'mut_prob': 1.0,
-        'sigma_env_fitness': 0.5,
-        'sigma_disp': 4,
-        'sigma_mut': 0.5,
+        'r': 5,
+        'K': 10,
+        'p_m': 1.0,
+        'sigma_f': 0.5,
+        'sigma_d': 4,
+        'sigma_m': 0.5,
         'random_seed': 1234,
         'taxon_threshold': 0.05,
         'rho': 0
@@ -135,5 +135,5 @@ def test_compound_environment():
 
 
 def test_paraspec_model():
-    assert isinstance(adaspec_IR12_model["life"], IR12Speciation)
-    assert isinstance(adaspec_IR12_model["life_env"], CompoundEnvironment)
+    assert isinstance(adascape_IR12_model["life"], IR12Speciation)
+    assert isinstance(adascape_IR12_model["life_env"], CompoundEnvironment)
