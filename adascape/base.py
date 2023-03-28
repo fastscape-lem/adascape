@@ -15,7 +15,7 @@ class SpeciationModelBase:
     """
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
-                 lifespan=None, random_seed=None, rescale_rates=False, always_direct_parent=True,
+                 random_seed=None, always_direct_parent=True,
                  on_extinction='warn', taxon_threshold=0.05, taxon_def='traits', rho=0):
         """
         Initialization of based model.
@@ -32,17 +32,10 @@ class SpeciationModelBase:
             with callables to compute optimal trait values of each trait for each individual.
         init_abundance : int
             Total number of individuals generated as the initial population.
-        lifespan : float, optional
-            Reproductive lifespan of organism. If None (default), the
-            lifespan will always match time step length
         random_seed : int or :class:`numpy.random.default_rng` object
             Fixed random state for reproducible experiments.
             If None (default), results will differ from one run
             to another.
-        rescale_rates : bool
-            If True (default) rates and parameters will be rescaled as
-            a fraction of the square root number of generations per
-            time step.
         always_direct_parent : bool, optional
             If True (default), the id of the parent set for each individual
             of the current population will always correspond to its direct
@@ -91,7 +84,6 @@ class SpeciationModelBase:
         self._truncnorm.random_state = self._rng
 
         self._params = {
-            'lifespan': lifespan,
             'random_seed': random_seed,
             'always_direct_parent': always_direct_parent,
             'on_extinction': on_extinction,
@@ -100,7 +92,6 @@ class SpeciationModelBase:
             'rho': rho
         }
         self._env_field_bounds = None
-        self._rescale_rates = rescale_rates
         self._set_direct_parent = True
 
         # dict of callables to generate initial values for each trait
@@ -174,10 +165,7 @@ class SpeciationModelBase:
     def _compute_taxon_ids(self):
         """
         Method to define taxa based on individual's traits and their shared common ancestry
-        using 1) a hierarchical clustering algorithm from scipy.spatial.hierarchy or
-        2) spectral clustering algorithm. For hierarchical clustering a distance value
-        and distance metric needs to be specified,the latter by default is set to 'ward' distance.
-        For spectral clustering only distance value needs to be specified.
+        using a spectral clustering algorithm.
 
         Returns
         -------
@@ -254,7 +242,9 @@ class SpeciationModelBase:
             n_comp = np.sum(E == 0)
             if n_comp > 1:
                 k = min(2, int(n_comp))
-                centroid, labels = kmeans2(U[:, :k], k=k, minit='points', seed=self._rng)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    centroid, labels = kmeans2(U[:, :k], k=k, minit='points', seed=self._rng)
                 count1 = np.sum(labels == 0)
                 count2 = np.sum(labels == 1)
                 if count1 < split_size // 2:
@@ -418,21 +408,6 @@ class SpeciationModelBase:
         mut_trait = self._truncnorm.rvs(a, b, loc=trait, scale=sigma)
         return mut_trait
 
-    def _scaled_param(self, param, dt):
-        """ Rescale a parameter as a fraction of the square root
-            of the number of generations per time step.
-        param : float
-            parameter value.
-        dt : float
-            time step.
-        """
-        if self._params['lifespan'] is None:
-            n_gen = 1.
-        else:
-            n_gen = dt / self._params['lifespan']
-
-        return param / np.sqrt(n_gen)
-
     def _update_individuals(self, dt):
         """Require implementation in subclasses."""
         raise NotImplementedError()
@@ -492,33 +467,36 @@ class IR12SpeciationModel(SpeciationModelBase):
     """
 
     def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
-                 lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', taxon_threshold=0.05,
-                 nb_radius=500., car_cap=1000., sigma_env_trait=0.3, sigma_mov=5.,
-                 sigma_mut=0.05, mut_prob=0.05, taxon_def='traits', rho=0):
-        """Initialization of speciation model without competition.
+                 random_seed=None, always_direct_parent=True,
+                 on_extinction='warn', taxon_threshold=0.05, sigma_u=1.0,
+                 r=500., K=1000., sigma_f=0.3, sigma_d=5.,
+                 sigma_m=0.05, p_m=0.05, taxon_def='traits', rho=0):
+        """Initialization of speciation model.
 
         Parameters
         ----------
-        nb_radius: float
-            Fixed radius of the circles that define the neighborhood
-            around each individual.
-        car_cap: int
-            Carrying capacity of group of individuals within the neighborhood area.
-        sigma_env_trait: float
-            Width of fitness curve.
-        sigma_mov: float
-            Width of dispersal curve.
-        sigma_mut: float
-            Width of mutation curve.
-        mut_prob: float
-            Probability of mutation occurring in offspring.
+        r: float
+           Radius of the local neighbourhood centred at each individual.
+        K: int
+           Carrying capacity of individuals in the local neighbourhood.
+        sigma_f: float
+           environmental fitness variability controlling
+           the selection width around optimal trait value.
+        sigma_d: float
+            dispersal variability of offspring in meters
+        sigma_m: float
+            trait variability of mutated offspring.
+        p_m: float
+            probability that a given offspring will mutate or keep its ancestor trait value.
+        sigma_u: float,
+            competition variability for trait distance between individuals. A value of =>1 will consider that
+            all individuals compete for resources in the giving neighborhood and a value of less than one,
+            will count only those individuals with similar trait values to compete for the same resources.
         """
         super().__init__(grid_x=grid_x, grid_y=grid_y,
                          init_trait_funcs=init_trait_funcs,
                          opt_trait_funcs=opt_trait_funcs,
                          init_abundance=init_abundance,
-                         lifespan=lifespan,
                          random_seed=random_seed,
                          always_direct_parent=always_direct_parent,
                          on_extinction=on_extinction,
@@ -528,41 +506,26 @@ class IR12SpeciationModel(SpeciationModelBase):
 
         # default parameter values
         self._params.update({
-            'nb_radius': nb_radius,
-            'car_cap': car_cap,
-            'sigma_env_trait': sigma_env_trait,
-            'sigma_mov': sigma_mov,
-            'sigma_mut': sigma_mut,
-            'mut_prob': mut_prob
+            'r': r,
+            'K': K,
+            'sigma_f': sigma_f,
+            'sigma_d': sigma_d,
+            'sigma_m': sigma_m,
+            'p_m': p_m,
+            'sigma_u': sigma_u
         })
 
-    def _get_n_gen(self, dt):
+    def _count_neighbors(self, locations, traits):
         """
-        Number of generations during one time step.
+        count number of neighbouring individual in a given radius
+        either all of them when sigma_u => 1 or only those
+        with similar trait values if sigma_u < 1.
+        The parameter sigma_u thus control the effective number of
+        individuals that compete for the same limiting resource (K).
 
         Parameters
         ----------
-        dt : float
-            Time step duration.
-
-        Returns
-        -------
-        float
-            number of generations per time step.
-        """
-
-        if self._params['lifespan'] is None:
-            return 1.
-        else:
-            return dt / self._params['lifespan']
-
-    def _count_neighbors(self, pop_points):
-        """
-        count number of neighbouring individual in a given radius.
-
-        Parameters
-        ----------
-        pop_points : list of array
+        locations : list of array
             location of individuals in a grid.
 
         Returns
@@ -571,10 +534,19 @@ class IR12SpeciationModel(SpeciationModelBase):
             number of neighbouring individual in a give radius.
 
         """
-        index = spatial.cKDTree(pop_points)
-        neighbors = index.query_ball_tree(index, self._params['nb_radius'])
+        index = spatial.cKDTree(locations)
+        neighbors = index.query_ball_tree(index, self._params['r'])
 
-        return np.array([len(nb) for nb in neighbors])
+        n_eff = np.zeros(traits.shape[0])
+        for i, j in enumerate(neighbors):
+            if traits.shape[1] == 1:
+                delta_trait_ij = traits[i, np.newaxis] - traits[j, np.newaxis]
+            else:
+                delta_trait_ij = traits[i, np.newaxis] - traits[j, :]
+            alpha_ij = np.prod(np.exp(-0.5 * delta_trait_ij ** 2 / self.params['sigma_u'] ** 2), axis=1)
+            n_eff[i] = np.sum(alpha_ij)
+        n_all = np.array([len(nb) for nb in neighbors])
+        return n_all, n_eff
 
     def evaluate_fitness(self, dt):
         """Evaluate fitness and generate offspring number for group of individuals and
@@ -586,10 +558,6 @@ class IR12SpeciationModel(SpeciationModelBase):
             Time step duration.
 
         """
-        if self._rescale_rates:
-            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
-        else:
-            sigma_env_trait = self._params['sigma_env_trait']
 
         if self.abundance:
             individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
@@ -601,10 +569,12 @@ class IR12SpeciationModel(SpeciationModelBase):
             )
 
             # compute offspring sizes
-            r_d = self._params['car_cap'] / self._count_neighbors(individual_positions)
+            n_all, n_eff = self._count_neighbors(individual_positions, self._individuals['trait'])
+
+            r_d = self._params['K'] / n_eff
 
             delta_trait_i = self._individuals['trait'] - opt_trait
-            diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
+            diag_val = np.ones(self._individuals['trait'].shape[1]) * self._params['sigma_f']
             sigma_diag = np.diag(diag_val ** 2)
             sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
             sigma_i = sigma_diag + sigma_offdiag
@@ -613,16 +583,19 @@ class IR12SpeciationModel(SpeciationModelBase):
             for i in range(self._individuals['trait'].shape[0]):
                 fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
 
-            n_gen = self._get_n_gen(dt)
-            n_offspring = np.round(r_d * fitness * np.sqrt(n_gen)).astype('int')
+            n_offspring = np.round(r_d * fitness).astype('int')
 
         else:
-            fitness = np.zeros(self._individuals['trait'].shape[1])
-            n_offspring = np.zeros(self._individuals['trait'].shape[1])
+            fitness = np.zeros(self._individuals['trait'].shape[0])
+            n_offspring = np.zeros(self._individuals['trait'].shape[0])
+            n_all = np.zeros(self._individuals['trait'].shape[0])
+            n_eff = np.zeros(self._individuals['trait'].shape[0])
 
         self._individuals.update({
             'fitness': fitness,
-            'n_offspring': n_offspring
+            'n_offspring': n_offspring,
+            'n_all': n_all,
+            'n_eff': n_eff
         })
 
     def _update_individuals(self, dt):
@@ -633,14 +606,6 @@ class IR12SpeciationModel(SpeciationModelBase):
         dt : float
             Time step duration.
         """
-        if self._rescale_rates:
-            mut_prob = self._scaled_param(self._params['mut_prob'], dt)
-            sigma_mov = self._scaled_param(self._params['sigma_mov'], dt)
-            sigma_mut = self._scaled_param(self._params['sigma_mut'], dt)
-        else:
-            mut_prob = self._params['mut_prob']
-            sigma_mov = self._params['sigma_mov']
-            sigma_mut = self._params['sigma_mut']
 
         n_offspring = self._individuals['n_offspring']
 
@@ -665,16 +630,17 @@ class IR12SpeciationModel(SpeciationModelBase):
             new_individuals['trait'] = np.repeat(self._individuals['trait'], n_offspring, axis=0)
 
             # mutate offspring
-            to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < mut_prob
+            to_mutate = self._rng.uniform(0, 1, new_individuals['trait'].shape[0]) < self._params['p_m']
             for i in range(new_individuals['trait'].shape[1]):
                 new_individuals['trait'][:, i] = np.where(to_mutate,
-                                                          self._mutate_trait(new_individuals['trait'][:, i], sigma_mut),
+                                                          self._mutate_trait(new_individuals['trait'][:, i],
+                                                                             self._params['sigma_m']),
                                                           new_individuals['trait'][:, i])
 
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
                                                    new_individuals['y'],
-                                                   sigma_mov)
+                                                   self._params['sigma_d'])
             new_individuals['x'] = new_x
             new_individuals['y'] = new_y
 
@@ -691,260 +657,7 @@ class IR12SpeciationModel(SpeciationModelBase):
         # reset fitness / offspring data
         self._individuals.update({
             'fitness': np.zeros(self._individuals['trait'].shape[0]),
-            'n_offspring': np.zeros(self._individuals['trait'].shape[0])
+            'n_offspring': np.zeros(self._individuals['trait'].shape[0]),
+            'n_all': np.zeros(self._individuals['trait'].shape[0]),
+            'n_eff': np.zeros(self._individuals['trait'].shape[0])
         })
-
-
-class DD03SpeciationModel(SpeciationModelBase):
-    """
-    Speciation model for asexual populations adapted from:
-        Doebeli, M., & Dieckmann, U. (2003).
-        Speciation along environmental gradients.
-        Nature, 421, 259–264.
-        https://doi.org/10.1038/nature01312.Published.
-    """
-
-    def __init__(self, grid_x, grid_y, init_trait_funcs, opt_trait_funcs, init_abundance,
-                 lifespan=None, random_seed=None, always_direct_parent=True,
-                 on_extinction='warn', taxon_threshold=0.05,
-                 birth_rate=1, movement_rate=5, car_cap_max=500, sigma_env_trait=0.3,
-                 mut_prob=0.005, sigma_mut=0.05, sigma_mov=0.12, sigma_comp_trait=0.9,
-                 sigma_comp_dist=0.19, taxon_def='traits', rho=0):
-        """
-        Initialization of speciation model with competition.
-
-        Parameters
-        ----------
-        birth_rate : integer or float
-            birth rate of individuals
-        movement_rate : integer of float
-            movement/dispersion rate of individuals
-        car_cap_max : integer
-            maximum carrying capacity
-        sigma_env_trait : float
-            variability of trait-environment relationship
-        mut_prob : float
-            mutation probability
-        sigma_mut : float
-            variability of mutated trait
-        sigma_mov : float
-            variability of movement distance
-        sigma_comp_trait : float
-            competition variability for trait distance between individuals
-        sigma_comp_dist : float
-            competition variability for spatial distance between individuals
-        """
-
-        super().__init__(grid_x=grid_x, grid_y=grid_y,
-                         init_trait_funcs=init_trait_funcs,
-                         opt_trait_funcs=opt_trait_funcs,
-                         init_abundance=init_abundance,
-                         lifespan=lifespan,
-                         random_seed=random_seed,
-                         always_direct_parent=always_direct_parent,
-                         on_extinction=on_extinction,
-                         taxon_threshold=taxon_threshold,
-                         taxon_def=taxon_def,
-                         rho=rho)
-
-        self._params.update({
-            'birth_rate': birth_rate,
-            'movement_rate': movement_rate,
-            'car_cap_max': car_cap_max,
-            'sigma_env_trait': sigma_env_trait,
-            'mut_prob': mut_prob,
-            'sigma_mut': sigma_mut,
-            'sigma_mov': sigma_mov,
-            'sigma_comp_trait': sigma_comp_trait,
-            'sigma_comp_dist': sigma_comp_dist,
-        })
-
-    def evaluate_fitness(self, dt):
-        """
-        Evaluate fitness of individuals' in a given environmental field.
-        The computation is based on the Gillespie algorithm for a group
-        of individuals that randomly grows, moves, and dies.
-
-        Parameters
-        ----------
-        dt : float
-            Time step duration.
-
-        """
-        if self.abundance:
-            individual_positions = np.column_stack([self._individuals['x'], self._individuals['y']])
-            _, grid_positions = self._grid_index.query(individual_positions)
-
-            # array of shape (n_individuals, n_traits)
-            opt_trait = np.column_stack(
-                [func(grid_positions) for func in self._opt_trait_funcs.values()]
-            )
-
-            # Compute events probabilities
-            net_gain, death_i = self.logistic_growth_comp(opt_trait=opt_trait, dt=dt)
-            birth_i = np.array(self.abundance * [self._params['birth_rate']]) + net_gain
-            movement_i = self.abundance * [self._params['movement_rate']]
-            events_tot = np.sum(birth_i) + np.sum(death_i) + np.sum(movement_i)
-            events_i = self._rng.choice(a=['B', 'D', 'M'], size=self._individuals['trait'].shape[0],
-                                        p=[np.sum(birth_i) / events_tot, np.sum(death_i) / events_tot,
-                                           np.sum(movement_i) / events_tot])
-
-            n_offspring = np.where(events_i == 'B', 2, np.where(events_i == 'M', 1, 0))
-
-        else:
-            events_i = np.zeros(self._individuals['trait'].shape[1])
-            death_i = np.zeros(self._individuals['trait'].shape[1])
-            n_offspring = np.zeros(self._individuals['trait'].shape[1])
-
-        self._individuals.update({'events_i': events_i,
-                                  'death_i': death_i,
-                                  'n_offspring': n_offspring
-                                  })
-
-    def _update_individuals(self, dt):
-        """
-        Update individuals' data (birth, death, and move).
-        Parameters
-        ----------
-        dt : float
-            Time step duration.
-        """
-        # rescale parameters
-        if self._rescale_rates:
-            mut_prob = self._scaled_param(self._params['mut_prob'], dt)
-            sigma_mov = self._scaled_param(self._params['sigma_mov'], dt)
-            sigma_mut = self._scaled_param(self._params['sigma_mut'], dt)
-        else:
-            mut_prob = self._params['mut_prob']
-            sigma_mov = self._params['sigma_mov']
-            sigma_mut = self._params['sigma_mut']
-
-        n_offspring = self._individuals['n_offspring']
-        if not n_offspring.sum():
-            # population total extinction
-            if self._params['on_extinction'] == 'raise':
-                raise RuntimeError("no offspring generated. "
-                                   "Model execution has stopped.")
-
-            if self._params['on_extinction'] == 'warn':
-                warnings.warn("no offspring generated. "
-                              "Model execution continues with no population.",
-                              RuntimeWarning)
-
-            new_individuals = {k: np.array([])
-                               for k in ('x', 'y', 'trait')}
-            new_individuals['trait'] = np.expand_dims(new_individuals['trait'], 1)
-        else:
-            events_i = self._individuals['events_i']
-            death_i = self._individuals['death_i']
-
-            # initialize temporary dictionaries
-            offspring = {k: np.array([]) for k in ('x', 'y')}
-            extant = self._individuals.copy()
-
-            # Birth
-            offspring['x'] = self._individuals['x'][events_i == 'B']
-            offspring['y'] = self._individuals['y'][events_i == 'B']
-
-            to_mutate = self._rng.uniform(0, 1, self._individuals['trait'][events_i == 'B', :].shape[0]) < mut_prob
-            offspring.update({'trait': np.empty([offspring['x'].size, extant['trait'].shape[1]])})
-            for i in range(extant['trait'].shape[1]):
-                offspring['trait'][:, i] = np.where(to_mutate,
-                                                    self._mutate_trait(self._individuals['trait'][events_i == 'B', i],
-                                                                       sigma_mut),
-                                                    self._individuals['trait'][events_i == 'B', i])
-
-            # Movement
-            new_x, new_y = self._mov_within_bounds(self._individuals['x'][events_i == 'M'],
-                                                   self._individuals['y'][events_i == 'M'],
-                                                   sigma_mov)
-            extant['x'][events_i == 'M'] = new_x
-            extant['y'][events_i == 'M'] = new_y
-
-            # Death
-            ids = np.arange(extant['x'].size)
-            todie = self._rng.choice(ids, size=self._individuals['x'][events_i == 'D'].size,
-                                     p=death_i / death_i.sum(), replace=False)
-            todie_ma = np.logical_not(np.any(ids == todie.repeat(ids.size).reshape(todie.size, ids.size), axis=0))
-            extant['x'] = extant['x'][todie_ma]
-            extant['y'] = extant['y'][todie_ma]
-            extant['trait'] = extant['trait'][todie_ma, :]
-            new_individuals = {k: np.append(extant[k], offspring[k]) for k in offspring.keys()}
-            new_individuals['trait'] = new_individuals['trait'].reshape(
-                [extant['trait'].shape[0] + offspring['trait'].shape[0], extant['trait'].shape[1]])
-
-        # Update dictionary
-        self._individuals.update(new_individuals)
-        self._individuals.update({'time': self._individuals['time'] + dt})
-        self._individuals.update({'step': self._individuals['step'] + 1})
-        self._individuals.update({'dt': dt})
-        if not n_offspring.sum():
-            taxon_id, ancestor_id = np.array([]), np.array([])
-        else:
-            taxon_id, ancestor_id = self._compute_taxon_ids()
-        self._individuals.update({'taxon_id': taxon_id})
-        self._individuals.update({'ancestor_id': ancestor_id})
-
-        # reset offspring data
-        self._individuals.update({
-            'n_offspring': np.zeros(self._individuals['trait'].shape[0])
-        })
-
-    def logistic_growth_comp(self, opt_trait, dt):
-        """
-        Logistic growth components
-
-        N = (1 - N/K_max) (1 - N_eff/K_eff)
-
-        Parameters
-        ----------
-        opt_trait : 2d array, floats
-            optimal trait value
-        Returns
-        -------
-        1d array, floats
-            death rate per individual
-        """
-
-        # rescale parameters
-        if self._rescale_rates:
-            sigma_env_trait = self._scaled_param(self._params['sigma_env_trait'], dt)
-            sigma_comp_trait = self._scaled_param(self._params['sigma_comp_trait'], dt)
-            sigma_comp_dist = self._scaled_param(self._params['sigma_comp_dist'], dt)
-        else:
-            sigma_env_trait = self._params['sigma_env_trait']
-            sigma_comp_trait = self._params['sigma_comp_trait']
-            sigma_comp_dist = self._params['sigma_comp_dist']
-
-        # normalize spatial dimensions
-        x = (self._individuals['x'] - self._grid_bounds['x'][0]) / (
-                self._grid_bounds['x'][1] - self._grid_bounds['x'][0])
-        y = (self._individuals['y'] - self._grid_bounds['y'][0]) / (
-                self._grid_bounds['y'][1] - self._grid_bounds['y'][0])
-
-        # trait distance among individuals
-        delta_comp_trait = dist.squareform(dist.pdist(self._individuals['trait']))
-        delta_trait_norm = np.exp(-0.5 * delta_comp_trait ** 2 / sigma_comp_trait ** 2)
-        # spatial distance among individuals
-        delta_xy = dist.squareform(dist.pdist(np.column_stack([x, y])))
-        delta_xy_norm = np.exp(-0.5 * delta_xy ** 2 / sigma_comp_dist ** 2)
-        # number of individual with similar traits and in proximity to each other
-        n_eff = np.sum(delta_trait_norm * delta_xy_norm, axis=1)
-        # environmental fitness to local environmental fields
-        delta_trait_i = self._individuals['trait'] - opt_trait
-        diag_val = np.ones(self._individuals['trait'].shape[1]) * sigma_env_trait
-        sigma_diag = np.diag(diag_val ** 2)
-        sigma_offdiag = self._params['rho'] * (diag_val[:, np.newaxis] * diag_val[np.newaxis, :] - sigma_diag)
-        sigma_i = sigma_diag + sigma_offdiag
-        env_fitness = np.zeros(self._individuals['trait'].shape[0])
-        inv_sigma = np.linalg.inv(sigma_i)
-        for i in range(self._individuals['trait'].shape[0]):
-            env_fitness[i] = np.exp(-1 / 2 * np.dot(delta_trait_i[i], np.dot(inv_sigma, delta_trait_i[i].T)))
-        # global carrying capacity
-        a = self.abundance / self._params['car_cap_max']
-        # local carrying capacity
-        k_eff = self._params['car_cap_max'] * env_fitness
-        b = n_eff / k_eff
-        net_gain = b * a
-        net_loss = b + a
-        return net_gain, net_loss
