@@ -368,7 +368,7 @@ class SpeciationModelBase:
         """
         return self._rng.uniform(values_range[0], values_range[1], self._init_abundance)
 
-    def _mov_within_bounds(self, x, y, sigma):
+    def _mov_within_bounds(self, x, y, sigma, disp_bounds_x=None, disp_bounds_y=None):
         """
         Move and check if the location of individuals are within grid range.
 
@@ -387,8 +387,12 @@ class SpeciationModelBase:
         """
         # TODO: check effects of movement and boundary conditions
         # TODO: Make boundary conditions of speciation model to match those of LEM
-        delta_bounds_x = self._grid_bounds['x'][:, None] - x
-        delta_bounds_y = self._grid_bounds['y'][:, None] - y
+        if disp_bounds_x and disp_bounds_y:
+            delta_bounds_x = np.array(disp_bounds_x)[:, None] - x
+            delta_bounds_y = np.array(disp_bounds_y)[:, None]- y
+        else:
+            delta_bounds_x = self._grid_bounds['x'][:, None] - x
+            delta_bounds_y = self._grid_bounds['y'][:, None] - y
         new_x = self._truncnorm.rvs(*(delta_bounds_x / sigma), loc=x, scale=sigma)
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
         return new_x, new_y
@@ -412,11 +416,11 @@ class SpeciationModelBase:
         mut_trait = self._truncnorm.rvs(a, b, loc=trait, scale=sigma)
         return mut_trait
 
-    def _update_individuals(self, dt):
+    def _update_individuals(self, dt, disp_bounds_x=None, disp_bounds_y=None):
         """Require implementation in subclasses."""
         raise NotImplementedError()
 
-    def update_individuals(self, dt):
+    def update_individuals(self, dt, disp_bounds_x=None, disp_bounds_y=None):
         """Update individuals' data (generate, mutate, and disperse).
 
         Parameters
@@ -425,7 +429,7 @@ class SpeciationModelBase:
             Time step duration.
 
         """
-        self._update_individuals(dt)
+        self._update_individuals(dt, disp_bounds_x, disp_bounds_y)
 
         if not self._params['always_direct_parent']:
             self._set_direct_parent = False
@@ -552,14 +556,9 @@ class IR12SpeciationModel(SpeciationModelBase):
         n_all = np.array([len(nb) for nb in neighbors])
         return n_all, n_eff
 
-    def evaluate_fitness(self, dt):
+    def evaluate_fitness(self):
         """Evaluate fitness and generate offspring number for group of individuals and
         with environmental conditions both taken at the current time step.
-
-        Parameters
-        ----------
-        dt : float
-            Time step duration.
 
         """
 
@@ -602,7 +601,7 @@ class IR12SpeciationModel(SpeciationModelBase):
             'n_eff': n_eff
         })
 
-    def _update_individuals(self, dt):
+    def _update_individuals(self, dt, disp_bounds_x=None, disp_bounds_y=None):
         """Update individuals' data (generate, mutate, and disperse).
 
         Parameters
@@ -644,7 +643,9 @@ class IR12SpeciationModel(SpeciationModelBase):
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
                                                    new_individuals['y'],
-                                                   self._params['sigma_d'])
+                                                   self._params['sigma_d'],
+                                                   disp_bounds_x,
+                                                   disp_bounds_y)
             new_individuals['x'] = new_x
             new_individuals['y'] = new_y
 
