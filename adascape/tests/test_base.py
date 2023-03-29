@@ -365,3 +365,15 @@ class TestIR12SpeciationModel:
 
         assert taxon_richness.iloc[0] == 1
         assert taxon_richness.iloc[-1] >= 1
+
+    def test_high_abundance_warning(self, grid, trait_funcs, num_gen=2, dt=1):
+        X, Y = grid
+        init_trait_funcs, opt_trait_funcs = trait_funcs
+
+        model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 1501, K=500)
+        model.initialize()
+
+        with pytest.warns(RuntimeWarning, match="Large number of individuals generated"):
+            for step in range(num_gen):
+                model.evaluate_fitness(dt)
+                model.update_individuals(dt)

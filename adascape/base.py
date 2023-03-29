@@ -284,8 +284,7 @@ class SpeciationModelBase:
 
     @property
     def abundance(self):
-        """Number of individuals at the current time
-        step.
+        """Number of individuals at the current time step.
 
         Returns
         -------
@@ -296,6 +295,11 @@ class SpeciationModelBase:
         if not self._individuals:
             return None
         else:
+            if self._individuals['trait'][:, 0].size > 1500:
+                warnings.warn("Large number of individuals generated. "
+                              "Model execution slow down but continues "
+                              "with abundance of {!r}.".format(self._individuals['trait'][:, 0].size),
+                              RuntimeWarning)
             return self._individuals['trait'][:, 0].size
 
     def to_dataframe(self, varnames=None):
