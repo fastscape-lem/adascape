@@ -2,9 +2,9 @@ from setuptools import setup
 
 
 setup(name='adascape',
-      version='0.1.0b7',
-      description='Simple adaptive speciation models as a landscape evolution model component',
-      url='https://git.gfz-potsdam.de/sec55-public/adaptive-speciation',
+      version='1.0.0',
+      description='Simple adaptive speciation model as a FastScape-LEM component',
+      url='https://github.com/fastscape-lem/adascape.git',
       author='Esteban Acevedo-Trejos, Katherine Kravitz, Benoit Bovy',
       author_email='esteban.acevedo-trejos@gfz-potsdam.de, kravitz@gfz-potsdam.de, bbovy@gfz-potsdam.de',
       license='GPLv3',
