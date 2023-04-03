@@ -16,7 +16,7 @@ and a [dendropy](https://dendropy.org/) extensions (optional dependencies).
 To install the package locally, first clone this repository:
 
 ``` shell
-$ git clone https://git.gfz-potsdam.de/sec55-public/adaptive-speciation
+$ git clone https://github.com/fastscape-lem/adascape.git
 $ cd adaptive-speciation
 ```
 
