@@ -17,7 +17,7 @@ To install the package locally, first clone this repository:
 
 ``` shell
 $ git clone https://github.com/fastscape-lem/adascape.git
-$ cd adaptive-speciation
+$ cd adascape
 ```
 
 Then run the command below (this will install numpy, scipy and pandas
