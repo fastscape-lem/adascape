@@ -183,7 +183,7 @@ class SpeciationModelBase:
         for ans in np.unique(current_ancestor_id):
             ans_indx = np.where(current_ancestor_id == ans)[0]
             clusdata = pd.DataFrame(self._individuals['trait'][ans_indx])
-            if self.params['taxon_threshold'] == 'traits_location':
+            if self.params['taxon_def'] == 'traits_location':
                 clusdata['x'] = self._individuals['x'][ans_indx] / self._grid_bounds['x'][1]
                 clusdata['y'] = self._individuals['y'][ans_indx] / self._grid_bounds['y'][1]
             clus = self._spect_clus(clusdata,
