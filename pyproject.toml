@@ -39,9 +39,11 @@ dependencies = [
     "numpy",
     "scipy",
     "pandas",
-    "dendropy",
+    "dendropy@git+https://github.com/jeetsukumaran/DendroPy.git#egg=master",
     "fastscape",
-    "orographic_precipitation@git+https://github.com/EstebanAce/orographic-precipitation#egg=master"
+    "toytree",
+    "toyplot",
+    "orographic_precipitation@git+https://github.com/EstebanAce/orographic-precipitation#egg=master",
 ]
 
 [project.urls]

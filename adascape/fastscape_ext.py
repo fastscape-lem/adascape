@@ -47,9 +47,10 @@ class Speciation:
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
 
-    disp_boundary = xs.variable(default=None, description="dispersal boundaries as an array "
-                                                          "or list of vertices [[x,y],...]",
-                                static=True, dims=('p', 'd'))
+    disp_boundary = xs.variable(default=None, description="dispersal boundaries as an xr.DataArray "
+                                                          "with vertices [[x,y],...] of bounded area "
+                                                          "with dimensions p and d",
+                                static=True, dims=[(), ('p', 'd')])
 
     _model = xs.any_object(description="speciation model instance")
     _individuals = xs.any_object(description="speciation model state dictionary")

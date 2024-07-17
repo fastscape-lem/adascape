@@ -14,6 +14,8 @@ dependencies:
     - matplotlib-base
     - papermill
     - nbconvert
+    - toytree
+    - toyplot
     - pytest
     - pip
     - pip:

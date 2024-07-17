@@ -99,11 +99,11 @@ def single_model_run(environment, x, y, num_gen=500, init_abundance=10, dt=1e0,
     dfs = []
     for step in range(num_gen):
         # compute environmental fitness for each individual
-        model.evaluate_fitness(dt)
+        model.evaluate_fitness()
         # append results to pandas.DataFrame
         dfs.append(model.to_dataframe())
         # mutate and disperse offspring
-        model.update_individuals(dt)
+        model.update_individuals(dt=dt)
     return pd.concat(dfs)
 
 
@@ -206,9 +206,6 @@ def toytree_plot(tree, ind_dtf):
     # iterate from top to bottom (ntips to 0)
     for tip in range(ttree.ntips)[::-1]:
 
-        # select a color for hist
-        color = toytree.colors[int((tip) / 100)]
-
         # get tip name and get hist from dict
         tipname = ttree.get_tip_labels()[tip]
         probs = dists[tipname]
@@ -218,7 +215,7 @@ def toytree_plot(tree, ind_dtf):
             ax1.fill(
                 points, probs / probs.max() * 1.25,
                 baseline=[tip] * len(points),
-                style={"fill": color, "stroke": "white", "stroke-width": 0.5},
+                style={"stroke": "white", "stroke-width": 0.5},
                 title=tipname,
             )
             # add horizontal line at base
