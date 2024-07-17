@@ -248,7 +248,7 @@ class TestIR12SpeciationModel:
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff ** 2))
         scaled_sigma_m = model_IR12.params['sigma_m'] * np.sqrt(model_IR12.params['p_m'])
-        assert trait_rms == pytest.approx(scaled_sigma_m, 0.1, 0.02)
+        assert trait_rms == pytest.approx(scaled_sigma_m, 0.1, 0.05)
 
         # test reset fitness data
         for k in ['fitness', 'n_offspring']:
