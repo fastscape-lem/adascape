@@ -1,20 +1,26 @@
 [![test build](https://github.com/EstebanAce/adascape/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
 [![test notebooks](https://github.com/EstebanAce/adascape/actions/workflows/test_notebooks.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7794374.svg)](https://doi.org/10.5281/zenodo.7794374)
+
+
 
 # AdaScape: Adaptive speciation and landscape evolution model
 
-The "AdaScape" package contains a simple adaptive speciation models written
-in Python that can be easily coupled with a landscape evolution model (FastScape).
+The "AdaScape" package contains a simple adaptive speciation model written
+in Python that is coupled with the landscape evolution model [FastScape](https://fastscape.readthedocs.io/en/latest/).
 
 ## Install
 
-This package depends on Python (3.5 or later is recommended),
+This package depends on Python (3.9 or later is recommended),
 [numpy](http://www.numpy.org/),
-[scipy](https://docs.scipy.org/doc/scipy/reference/) and
-[pandas](https://pandas.pydata.org/).
+[scipy](https://docs.scipy.org/doc/scipy/reference/),
+[pandas](https://pandas.pydata.org/),
+[fastscape](https://github.com/fastscape-lem/fastscape) and 
+[orographic precipitation](https://github.com/fastscape-lem/orographic-precipitation) .
 
-This package also provides a [fastscape](https://fastscape.readthedocs.io)
-and a [dendropy](https://dendropy.org/) extensions (optional dependencies).
+This package also provides a [dendropy](https://dendropy.org/) extension and 
+uses [toytree](https://toytree.readthedocs.io/en/latest/index.html) 
+to plot phylogenetic trees (optional dependencies).
 
 To install the package locally, first clone this repository:
 
