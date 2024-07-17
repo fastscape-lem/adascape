@@ -1,0 +1,33 @@
+name: test notebooks
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+jobs:
+  run_all_notebooks:
+    name: Run all notebooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          cache-environment: true
+          cache-downloads: false
+          environment-file: environment.yml
+      - name: Conda info
+        shell: bash -l {0}
+        run: conda info
+      - name: Install adascape
+        shell: bash -l {0}
+        run: |
+          pip install --no-deps -e .
+      - name: Execute all notebooks
+        shell: bash -l {0}
+        run: python execute_all_notebooks.py

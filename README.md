@@ -1,3 +1,6 @@
+[![test build](https://github.com/EstebanAce/adascape/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
+[![test notebooks](https://github.com/EstebanAce/adascape/actions/workflows/test_notebooks.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
+
 # AdaScape: Adaptive speciation and landscape evolution model
 
 The "AdaScape" package contains a simple adaptive speciation models written

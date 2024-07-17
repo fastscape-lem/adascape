@@ -1,0 +1,37 @@
+name: test build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Run pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          cache-environment: true
+          cache-downloads: false
+          environment-file: environment.yml
+      - name: Conda info
+        shell: bash -l {0}
+        run: conda info
+      - name: Conda list
+        shell: bash -l {0}
+        run: conda list
+      - name: Install adascape
+        shell: bash -l {0}
+        run: |
+          pip install --no-deps -e .
+      - name: Run tests
+        shell: bash -l {0}
+        run: pytest adascape -v
+
