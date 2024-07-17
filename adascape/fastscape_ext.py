@@ -47,6 +47,10 @@ class Speciation:
     grid_x = xs.foreign(UniformRectilinearGrid2D, "x")
     grid_y = xs.foreign(UniformRectilinearGrid2D, "y")
 
+    disp_boundary = xs.variable(default=None, description="dispersal boundaries as an array "
+                                                          "or list of vertices [[x,y],...]",
+                                static=True, dims=('p', 'd'))
+
     _model = xs.any_object(description="speciation model instance")
     _individuals = xs.any_object(description="speciation model state dictionary")
 
@@ -158,8 +162,7 @@ class IR12Speciation(Speciation):
 
         self._model.initialize(init_x_range, init_y_range)
 
-    @xs.runtime(args='step_delta')
-    def run_step(self, dt):
+    def run_step(self):
         # reset individuals "cache"
         self._individuals = None
 
@@ -167,11 +170,11 @@ class IR12Speciation(Speciation):
         self._model.params.update(self._get_model_params())
 
         self.abundance = self._model.abundance
-        self._model.evaluate_fitness(dt)
+        self._model.evaluate_fitness()
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):
-        self._model.update_individuals(dt)
+        self._model.update_individuals(dt, self.disp_boundary)
 
     @fitness.compute
     def _get_fitness(self):

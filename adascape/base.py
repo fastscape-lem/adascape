@@ -1,3 +1,4 @@
+import pdb
 import textwrap
 import warnings
 import numpy as np
@@ -368,9 +369,10 @@ class SpeciationModelBase:
         """
         return self._rng.uniform(values_range[0], values_range[1], self._init_abundance)
 
-    def _mov_within_bounds(self, x, y, sigma):
+    def _mov_within_bounds(self, x, y, sigma, disp_boundary=None):
         """
-        Move and check if the location of individuals are within grid range.
+        Move and check if the location of individuals are within grid range
+        or available are to disperse.
 
         Parameters
         ----------
@@ -380,6 +382,9 @@ class SpeciationModelBase:
             locations along the y coordinate
         sigma : float
             movement variability
+        disp_boundary: float, array-like
+            dispersal boundaries as an array or list of vertices [[x,y],...]
+            delimiting the area where individuals can disperse
         Returns
         -------
         array-like
@@ -391,6 +396,17 @@ class SpeciationModelBase:
         delta_bounds_y = self._grid_bounds['y'][:, None] - y
         new_x = self._truncnorm.rvs(*(delta_bounds_x / sigma), loc=x, scale=sigma)
         new_y = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y, scale=sigma)
+
+        if disp_boundary is not None:
+            hull = spatial.Delaunay(disp_boundary)
+            inhull = hull.find_simplex(np.column_stack([new_x, new_y])) <= 0
+
+            while any(inhull):
+                delta_bounds_x = self._grid_bounds['x'][:, None] - x[inhull]
+                delta_bounds_y = self._grid_bounds['y'][:, None] - y[inhull]
+                new_x[inhull] = self._truncnorm.rvs(*(delta_bounds_x / sigma), loc=x[inhull], scale=sigma)
+                new_y[inhull] = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y[inhull], scale=sigma)
+                inhull = hull.find_simplex(np.column_stack([new_x, new_y])) <= 0
         return new_x, new_y
 
     def _mutate_trait(self, trait, sigma):
@@ -412,20 +428,23 @@ class SpeciationModelBase:
         mut_trait = self._truncnorm.rvs(a, b, loc=trait, scale=sigma)
         return mut_trait
 
-    def _update_individuals(self, dt):
+    def _update_individuals(self, dt, disp_boundary=None):
         """Require implementation in subclasses."""
         raise NotImplementedError()
 
-    def update_individuals(self, dt):
+    def update_individuals(self, dt, disp_boundary=None):
         """Update individuals' data (generate, mutate, and disperse).
 
         Parameters
         ----------
         dt : float
             Time step duration.
+        disp_boundary: float, array-like
+            dispersal boundaries as an array or list of vertices [[x,y],...]
+            delimiting the area where individuals can disperse
 
         """
-        self._update_individuals(dt)
+        self._update_individuals(dt, disp_boundary)
 
         if not self._params['always_direct_parent']:
             self._set_direct_parent = False
@@ -552,14 +571,9 @@ class IR12SpeciationModel(SpeciationModelBase):
         n_all = np.array([len(nb) for nb in neighbors])
         return n_all, n_eff
 
-    def evaluate_fitness(self, dt):
+    def evaluate_fitness(self):
         """Evaluate fitness and generate offspring number for group of individuals and
         with environmental conditions both taken at the current time step.
-
-        Parameters
-        ----------
-        dt : float
-            Time step duration.
 
         """
 
@@ -602,13 +616,16 @@ class IR12SpeciationModel(SpeciationModelBase):
             'n_eff': n_eff
         })
 
-    def _update_individuals(self, dt):
+    def _update_individuals(self, dt, disp_boundary=None):
         """Update individuals' data (generate, mutate, and disperse).
 
         Parameters
         ----------
         dt : float
             Time step duration.
+        disp_boundary: float, array-like
+            dispersal boundaries as an array or list of vertices [[x,y],...]
+            delimiting the area where individuals can disperse
         """
 
         n_offspring = self._individuals['n_offspring']
@@ -644,7 +661,8 @@ class IR12SpeciationModel(SpeciationModelBase):
             # disperse offspring within grid bounds
             new_x, new_y = self._mov_within_bounds(new_individuals['x'],
                                                    new_individuals['y'],
-                                                   self._params['sigma_d'])
+                                                   self._params['sigma_d'],
+                                                   disp_boundary)
             new_individuals['x'] = new_x
             new_individuals['y'] = new_y
 
