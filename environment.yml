@@ -1,0 +1,23 @@
+name: adascape_dev
+channels:
+  - conda-forge
+dependencies:
+    - python>=3.9
+    - numpy
+    - pandas
+    - scipy
+    - fastscape
+    - jupyterlab
+    - ipykernel
+    - ipywidgets
+    - nb_conda_kernels
+    - matplotlib-base
+    - papermill
+    - nbconvert
+    - toytree
+    - toyplot
+    - pytest
+    - pip
+    - pip:
+        - 'git+https://github.com/EstebanAce/orographic-precipitation.git'
+        - 'git+https://github.com/jeetsukumaran/DendroPy.git'

@@ -71,7 +71,7 @@ def test_speciation(speciation, specIR12_process):
     if speciation == 'IR12':
         spec = copy.deepcopy(specIR12_process)
     spec.initialize()
-    spec.run_step(1)
+    spec.run_step()
 
     assert spec.abundance == 10
     np.testing.assert_equal(spec._get_taxon_id(), np.ones(10))

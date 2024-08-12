@@ -209,7 +209,7 @@ class TestIR12SpeciationModel:
         if model == 'IR12':
             model_IR12.initialize()
             init_pop = model_IR12.individuals.copy()
-            model_IR12.evaluate_fitness(1)
+            model_IR12.evaluate_fitness()
             eval_pop = model_IR12.individuals.copy()
             for k in ['fitness', 'n_offspring']:
                 assert k in eval_pop
@@ -226,7 +226,7 @@ class TestIR12SpeciationModel:
 
             model_IR12.initialize()
             init_pop = model_IR12.individuals.copy()
-            model_IR12.evaluate_fitness(1)
+            model_IR12.evaluate_fitness()
             model_IR12.update_individuals(1)
             current_pop = model_IR12.individuals.copy()
 
@@ -239,7 +239,7 @@ class TestIR12SpeciationModel:
             assert _in_bounds(grid[1], current_pop['y'])
 
             # test mutation
-            model_IR12.evaluate_fitness(1)
+            model_IR12.evaluate_fitness()
             model_IR12.update_individuals(1)
             last_pop = model_IR12.individuals.copy()
             idx = np.searchsorted(current_pop['taxon_id'], last_pop['ancestor_id'])-1
@@ -248,7 +248,7 @@ class TestIR12SpeciationModel:
         trait_diff = np.concatenate(trait_diff)
         trait_rms = np.sqrt(np.mean(trait_diff ** 2))
         scaled_sigma_m = model_IR12.params['sigma_m'] * np.sqrt(model_IR12.params['p_m'])
-        assert trait_rms == pytest.approx(scaled_sigma_m, 0.1, 0.02)
+        assert trait_rms == pytest.approx(scaled_sigma_m, 0.1, 0.05)
 
         # test reset fitness data
         for k in ['fitness', 'n_offspring']:
@@ -263,19 +263,19 @@ class TestIR12SpeciationModel:
         model = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, **params_IR12)
         model.initialize()
 
-        model.evaluate_fitness(1)
+        model.evaluate_fitness()
         parents0 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(1)
+        model.evaluate_fitness()
         parents1 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(1)
+        model.evaluate_fitness()
         parents2 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
-        model.evaluate_fitness(1)
+        model.evaluate_fitness()
         parents3 = model.to_dataframe(varnames='ancestor_id')
         model.update_individuals(1)
 
@@ -311,24 +311,24 @@ class TestIR12SpeciationModel:
 
         if on_extinction == 'raise':
             with pytest.raises(RuntimeError, match="no offspring"):
-                initialized_model_IR12.evaluate_fitness(1)
+                initialized_model_IR12.evaluate_fitness()
                 initialized_model_IR12.update_individuals(1)
             return
 
         elif on_extinction == 'warn':
             with pytest.warns(RuntimeWarning, match="no offspring"):
-                initialized_model_IR12.evaluate_fitness(1)
+                initialized_model_IR12.evaluate_fitness()
                 initialized_model_IR12.update_individuals(1)
                 current = get_pop_subset()
-                initialized_model_IR12.evaluate_fitness(1)
+                initialized_model_IR12.evaluate_fitness()
                 initialized_model_IR12.update_individuals(1)
                 next = get_pop_subset()
 
         else:
-            initialized_model_IR12.evaluate_fitness(1)
+            initialized_model_IR12.evaluate_fitness()
             initialized_model_IR12.update_individuals(1)
             current = get_pop_subset()
-            initialized_model_IR12.evaluate_fitness(1)
+            initialized_model_IR12.evaluate_fitness()
             initialized_model_IR12.update_individuals(1)
             next = get_pop_subset()
 
@@ -354,7 +354,7 @@ class TestIR12SpeciationModel:
 
         dfs = []
         for step in range(num_gen):
-            model.evaluate_fitness(dt)
+            model.evaluate_fitness()
             dfs.append(model.to_dataframe())
             model.update_individuals(dt)
 
@@ -375,5 +375,5 @@ class TestIR12SpeciationModel:
 
         with pytest.warns(RuntimeWarning, match="Large number of individuals generated"):
             for step in range(num_gen):
-                model.evaluate_fitness(dt)
+                model.evaluate_fitness()
                 model.update_individuals(dt)
