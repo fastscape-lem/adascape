@@ -12,7 +12,6 @@ include = [
 
 [tool.setuptools_scm]
 fallback_version = "9999"
-version_file = "adascape/_version.py"
 
 [project]
 name = "adascape"
