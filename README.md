@@ -1,4 +1,4 @@
-[![test build](https://github.com/EstebanAce/adascape/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
+[![test build](https://github.com/fastscape-lem/adascape/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/fastscape-lem/adascape/actions)
 [![test notebooks](https://github.com/EstebanAce/adascape/actions/workflows/test_notebooks.yml/badge.svg?branch=master)](https://github.com/EstebanAce/adascape/actions)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7794374.svg)](https://doi.org/10.5281/zenodo.7794374)
 
