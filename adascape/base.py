@@ -399,14 +399,14 @@ class SpeciationModelBase:
 
         if disp_boundary is not None:
             hull = spatial.Delaunay(disp_boundary)
-            inhull = hull.find_simplex(np.column_stack([new_x, new_y])) <= 0
+            inhull = hull.find_simplex(np.column_stack([new_x, new_y])) < 0
 
             while any(inhull):
                 delta_bounds_x = self._grid_bounds['x'][:, None] - x[inhull]
                 delta_bounds_y = self._grid_bounds['y'][:, None] - y[inhull]
                 new_x[inhull] = self._truncnorm.rvs(*(delta_bounds_x / sigma), loc=x[inhull], scale=sigma)
                 new_y[inhull] = self._truncnorm.rvs(*(delta_bounds_y / sigma), loc=y[inhull], scale=sigma)
-                inhull = hull.find_simplex(np.column_stack([new_x, new_y])) <= 0
+                inhull = hull.find_simplex(np.column_stack([new_x, new_y])) < 0
         return new_x, new_y
 
     def _mutate_trait(self, trait, sigma):
