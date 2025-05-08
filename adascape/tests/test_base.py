@@ -133,7 +133,7 @@ class TestIR12SpeciationModel:
         assert m._rng is rs
 
         m2 = IR12SpeciationModel(X, Y, init_trait_funcs, opt_trait_funcs, 10, random_seed=0)
-        np.testing.assert_equal(m2._rng.__getstate__()['state'], rs.__getstate__()['state'])
+        np.testing.assert_equal(m2._rng.random(10), rs.random(10))
 
     def test_params(self, params_IR12, model_IR12):
         assert model_IR12.params == params_IR12

@@ -17,6 +17,7 @@ dependencies:
     - toytree
     - toyplot
     - pytest
+    - zarr<3
     - pip
     - pip:
         - 'git+https://github.com/EstebanAce/orographic-precipitation.git'
