@@ -121,10 +121,7 @@ class IR12Speciation(Speciation):
     r = xs.variable(description="fixed neighborhood radius")
     K = xs.variable(description="carrying capacity within a neighborhood")
 
-    fitness = xs.on_demand(
-        dims='ind',
-        description="individual's fitness value"
-    )
+    fitness = xs.on_demand(dims='ind',description="individual's fitness value")
 
     topo_elevation = xs.foreign(SurfaceTopography, "elevation")
 
@@ -177,9 +174,22 @@ class IR12Speciation(Speciation):
     def _island_boundary(self):
         xx, yy = np.meshgrid(self.grid_x, self.grid_y)
         island_mask = self.topo_elevation > self.disp_boundary
-        island_grid = np.column_stack((xx[island_mask], yy[island_mask]))
-        cvhull = ConvexHull(island_grid)
-        return island_grid[cvhull.vertices]
+        # Check if there is an area to disperse individuals
+        if island_mask.sum() > 3:
+            island_grid = np.column_stack((xx[island_mask], yy[island_mask]))
+            cvhull = ConvexHull(island_grid)
+            return island_grid[cvhull.vertices]
+        else:
+            # if there is no area to disperse individuals then
+            # all offspring is killed and the dispersal boundary is resetto default
+            self._model._individuals.update({
+            'fitness': np.zeros(self._model._individuals['trait'].shape[0]),
+            'n_offspring': np.zeros(self._model._individuals['trait'].shape[0]),
+            'n_all': np.zeros(self._model._individuals['trait'].shape[0]),
+            'n_eff': np.zeros(self._model._individuals['trait'].shape[0])
+            }) 
+            return None
+        
 
     @xs.runtime(args='step_delta')
     def finalize_step(self, dt):

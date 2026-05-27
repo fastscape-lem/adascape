@@ -2,8 +2,8 @@ name: adascape_dev
 channels:
   - conda-forge
 dependencies:
-    - python>=3.9
-    - numpy
+    - python=3.11
+    - numpy<2
     - pandas
     - scipy
     - fastscape
@@ -20,5 +20,5 @@ dependencies:
     - zarr<3
     - pip
     - pip:
-        - 'git+https://github.com/EstebanAce/orographic-precipitation.git'
+        - 'git+https://github.com/fastscape-lem/orographic-precipitation.git'
         - 'git+https://github.com/jeetsukumaran/DendroPy.git'

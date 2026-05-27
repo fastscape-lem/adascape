@@ -372,7 +372,7 @@ class SpeciationModelBase:
     def _mov_within_bounds(self, x, y, sigma, disp_boundary=None):
         """
         Move and check if the location of individuals are within grid range
-        or available are to disperse.
+        or available area to disperse.
 
         Parameters
         ----------

@@ -284,9 +284,10 @@ def plot_topo_taxa(ds, dtf, time_sel):
 
     for ax1, t in zip(fig1.axes.ravel(), time_sel):
         pop = dtf[dtf.out == t].groupby('taxon_id')
-        max_no_grp = max(list(pop.groups.keys()))
-        for k, v in pop:
-            ax1.scatter(v.x, v.y, marker=mkrs[int(max_no_grp - k)], s=20)
+        if pop.groups:
+            max_no_grp = max(list(pop.groups.keys()))
+            for k, v in pop:
+                ax1.scatter(v.x, v.y, marker=mkrs[int(max_no_grp - k)], s=20)
 
 
 def plot_temp_dyn_2traits(dtf):
